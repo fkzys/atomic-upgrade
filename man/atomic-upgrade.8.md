@@ -1,3 +1,4 @@
+```markdown
 ---
 title: ATOMIC-UPGRADE
 section: 8
@@ -22,8 +23,15 @@ mounts it, runs a command inside an arch-chroot (default: **pacman -Syu**),
 updates *fstab*, builds a Unified Kernel Image (UKI), optionally signs it
 with **sbctl**(8), and runs garbage collection.
 
+Each generation is a snapshot + UKI pair. The UKI contains the kernel and
+initramfs from that snapshot, and its cmdline points to that specific
+subvolume. Rollback works because each boot menu entry maps to one complete
+system state.
+
 The new generation becomes active on next reboot. Rollback is performed by
-selecting a previous UKI entry in systemd-boot.
+selecting a previous UKI entry in the boot menu. Any bootloader or UEFI
+firmware that discovers Type #2 entries works — systemd-boot, rEFInd,
+direct UEFI boot, etc.
 
 **atomic-rebuild-uki** rebuilds the UKI for an existing generation subvolume.
 Use it to recover an accidentally deleted *.efi* file.
@@ -164,4 +172,4 @@ List subvolumes and UKI status:
 # SEE ALSO
 
 **atomic-gc**(8), **atomic.conf**(5), **btrfs-subvolume**(8), **ukify**(1),
-**sbctl**(8), **pacman**(8), **arch-chroot**(8), **systemd-boot**(7)
+**sbctl**(8), **pacman**(8), **arch-chroot**(8)
