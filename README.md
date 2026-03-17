@@ -3,9 +3,9 @@
 [![CI](https://github.com/rpPH4kQocMjkm2Ve/atomic-upgrade/actions/workflows/ci.yml/badge.svg)](https://github.com/rpPH4kQocMjkm2Ve/atomic-upgrade/actions/workflows/ci.yml)
 ![License](https://img.shields.io/github/license/rpPH4kQocMjkm2Ve/atomic-upgrade)
 
-Atomic system upgrades for Arch Linux on Btrfs + UKI + Secure Boot.
+Atomic system upgrades for Arch Linux on Btrfs + UKI + optional Secure Boot.
 
-NixOS/Silverblue-style generational updates on plain Arch: Btrfs snapshot → chroot → upgrade → build UKI → sign → reboot. Rollback is selecting a previous entry in systemd-boot.
+NixOS/Silverblue-style generational updates on plain Arch: Btrfs snapshot → chroot → upgrade → build UKI → sign → reboot. Rollback is selecting a previous UKI entry in the boot menu.
 
 ## How it works
 
@@ -23,7 +23,9 @@ sudo atomic-upgrade
   reboot → new generation active
 ```
 
-Rollback: select a previous UKI entry in systemd-boot at boot time.
+Rollback: select a previous UKI entry in the boot menu.
+
+Each generation is a snapshot + UKI pair. The UKI contains the kernel and initramfs from that snapshot, and its cmdline points to that specific subvolume. Rollback works because each boot menu entry maps to one complete system state.
 
 ## Comparison
 
@@ -35,7 +37,7 @@ Rollback: select a previous UKI entry in systemd-boot at boot time.
 |---------|---------------|---------------------|------------------------|-------|---------------|
 | **Base distro** | Arch | Any (openSUSE native) | Any Btrfs | NixOS | Fedora |
 | **Atomic upgrades** | ✓ (chroot) | ✗ (pre/post snapshots) | ✗ (pre/post snapshots) | ✓ | ✓ |
-| **Rollback** | Boot menu (systemd-boot) | Boot menu (GRUB) | Boot menu (GRUB) | Boot menu | Boot menu (GRUB) |
+| **Rollback** | Boot menu (UKI) | Boot menu (GRUB) | Boot menu (GRUB) | Boot menu | Boot menu (GRUB) |
 | **Secure Boot** | ✓ (sbctl, optional) | Via separate setup | Via separate setup | ✓ (lanzaboote) | ✓ |
 | **UKI per generation** | ✓ | ✗ | ✗ | Optional | Optional |
 | **Upgrade isolation** | Chroot snapshot | None (live) | None (live) | Nix build | OSTree |
@@ -293,10 +295,11 @@ On disks larger than ~200 GB, the free percentage may drop below 10% while absol
 
 ### Prerequisites
 
-- Btrfs root filesystem
-- systemd-boot
-- Root on a Btrfs subvolume (any name — snapshots are created as `root-<timestamp>`)
+- Btrfs root filesystem on a subvolume (any name — snapshots are created as `root-<timestamp>`)
+- A bootloader or UEFI firmware that discovers UKI files (Type #2 entries) — systemd-boot, rEFInd, direct UEFI boot, etc.
 - Secure Boot with sbctl *(optional, enable with `SBCTL_SIGN=1`)*
+
+The tool places `.efi` files into `ESP/EFI/Linux/` (signed or unsigned depending on `SBCTL_SIGN`). Any boot environment that picks up UKI files from that path will work.
 
 > **Important:** `/home`, `/var/log`, `/var/cache`, and other stateful data
 > should live on **separate Btrfs subvolumes**. Only the root subvolume is
