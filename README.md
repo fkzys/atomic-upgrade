@@ -243,7 +243,7 @@ sudo atomic-upgrade -- bash -c '/usr/bin/pacman -Syu && sudo -u YOUR_USER yay -S
 Before creating a snapshot, `atomic-upgrade` checks available disk space on both the Btrfs filesystem and the ESP:
 
 - **Btrfs**: blocks only when free space is below the percentage threshold (default 10%) **and** below 2 GB absolute. On large disks where free percentage is low but tens of gigabytes are available, the operation proceeds with a warning.
-- **ESP**: requires at least 250 MB free (one UKI is typically 200–250 MB).
+- **ESP**: requires at least 250 MB free (one UKI is typically 200–230 MB).
 
 If disk space cannot be determined (e.g. `btrfs` and `df` both fail), a warning is shown and the operation proceeds.
 
