@@ -192,7 +192,7 @@ The system has two layers preventing accidental direct upgrades, controlled by a
 - Upgrades via `atomic-upgrade` (env var + lock verification)
 - Upgrades via AUR helpers (`yay`, `paru`, `pikaur`, `aura`)
 
-**Pacman wrapper** (`/usr/local/bin/pacman`) — intercepts `pacman -Syu` and suggests `atomic-upgrade` instead. Detects AUR helpers to avoid double prompts. Also warns about `-Sy` without `-u` (partial upgrade risk).
+**Pacman wrapper** (`/usr/local/bin/pacman`) — intercepts `pacman -Syu` and suggests `atomic-upgrade` instead. Detects AUR helpers as parent processes to avoid double prompts. Also warns about `-Sy` without `-u` (partial upgrade risk).
 
 Both layers check `UPGRADE_GUARD` at runtime — the change takes effect immediately, no restart or file removal needed.
 
@@ -238,11 +238,22 @@ sudo atomic-upgrade -- bash -c '/usr/bin/pacman -Syu && sudo -u YOUR_USER yay -S
 > upgrade applies to the live system and is **not atomic**. The next
 > `atomic-upgrade` will snapshot whatever state the live system is in.
 
+## Disk space checks
+
+Before creating a snapshot, `atomic-upgrade` checks available disk space on both the Btrfs filesystem and the ESP:
+
+- **Btrfs**: blocks only when free space is below the percentage threshold (default 10%) **and** below 2 GB absolute. On large disks where free percentage is low but tens of gigabytes are available, the operation proceeds with a warning.
+- **ESP**: requires at least 250 MB free (one UKI is typically 200–250 MB).
+
+If disk space cannot be determined (e.g. `btrfs` and `df` both fail), a warning is shown and the operation proceeds.
+
 ## Garbage collection
 
 `atomic-gc` and the GC phase of `atomic-upgrade` keep the last N generations (default 3) plus the currently booted one. After deleting old generations, an orphan sweep removes:
 - `root-*` subvolumes that have no matching UKI on the ESP
 - UKI files on the ESP that have no matching subvolume
+
+If the ESP is not mounted during the orphan sweep phase, it is skipped with a warning — orphans will be cleaned up on the next run.
 
 ## Components
 
@@ -257,6 +268,26 @@ sudo atomic-upgrade -- bash -c '/usr/bin/pacman -Syu && sudo -u YOUR_USER yay -S
 | `rootdev.py` | Auto-detect root device type (LUKS/LVM/plain) and build kernel cmdline |
 | `pacman-wrapper` | Optional `/usr/local/bin/pacman` wrapper |
 | `completions/` | Zsh and bash tab completions for `atomic-gc` and `atomic-rebuild-uki` |
+
+## Troubleshooting
+
+### fstab uses `subvolid=` without `subvol=`
+
+`atomic-upgrade` requires a `subvol=` option in the root fstab entry to track which generation is active. If your fstab uses only `subvolid=`, add `subvol=/your-current-subvol` to the mount options:
+
+```bash
+# Before (won't work):
+UUID=xxx / btrfs rw,noatime,subvolid=256 0 0
+
+# After (works):
+UUID=xxx / btrfs rw,noatime,subvolid=256,subvol=/root-20260601-120000 0 0
+```
+
+> **Note:** When both `subvolid=` and `subvol=` are present, some kernels prioritize `subvolid=`. Consider removing `subvolid=` from fstab to avoid conflicts after generation switches.
+
+### Low disk space warning on large disks
+
+On disks larger than ~200 GB, the free percentage may drop below 10% while absolute free space is still well above 2 GB. In this case, `atomic-upgrade` shows a warning but proceeds normally. The operation is only blocked when both the percentage **and** absolute thresholds are crossed.
 
 ## Requirements
 
