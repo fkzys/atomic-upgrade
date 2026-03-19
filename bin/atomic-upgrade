@@ -231,6 +231,9 @@ btrfs subvolume snapshot "${BTRFS_MOUNT}/${CURRENT_SUBVOL}" \
     "${BTRFS_MOUNT}/${NEW_SUBVOL}"
 SNAPSHOT_CREATED=1
 
+# Remove inherited ephemeral marker from snapshot (if booted from ephemeral)
+rm -f "${BTRFS_MOUNT}/${NEW_SUBVOL}/.atomic-ephemeral"
+
 # Ephemeral: create marker and optionally isolated home
 if [[ $EPHEMERAL -eq 1 ]]; then
     echo ":: Setting up ephemeral generation..."
