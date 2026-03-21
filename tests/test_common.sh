@@ -610,6 +610,19 @@ make_mock mount      'exit 0'
 
 section "check_dependencies"
 
+# check_dependencies verifies /usr/lib/atomic/{fstab,rootdev}.py exist.
+# In CI the package isn't installed, so monkey-patch the function
+# to use stub files in TESTDIR.
+_stub_lib="${TESTDIR}/atomic_lib_stub"
+mkdir -p "$_stub_lib"
+touch "${_stub_lib}/fstab.py" "${_stub_lib}/rootdev.py"
+
+if [[ ! -f /usr/lib/atomic/fstab.py ]]; then
+    eval "$(declare -f check_dependencies | sed \
+        "s|/usr/lib/atomic/fstab.py|${_stub_lib}/fstab.py|g;
+         s|/usr/lib/atomic/rootdev.py|${_stub_lib}/rootdev.py|g")"
+fi
+
 # Create an isolated bin dir with everything EXCEPT btrfs.
 # This tests that check_dependencies correctly reports it missing.
 _dep_bin="${TESTDIR}/dep_bin"
