@@ -145,18 +145,31 @@ chroot_snapshot() {
     local rc=0
     local resolv_link=""
 
+    # Unmount all chroot mounts in reverse order; safe to call at any
+    # point — silently skips paths that are not mounted.
+    _chroot_umount() {
+        umount "${root}${LOCK_DIR}" 2>/dev/null
+        umount "${root}/tmp" 2>/dev/null
+        umount "${root}/run" 2>/dev/null
+        umount "${root}/dev/shm" 2>/dev/null
+        umount "${root}/dev/pts" 2>/dev/null
+        umount "${root}/dev" 2>/dev/null
+        umount "${root}/sys/firmware/efi/efivars" 2>/dev/null
+        umount "${root}/sys" 2>/dev/null
+    }
+
     mount -t sysfs sys "${root}/sys" -o nosuid,noexec,nodev,ro || return 1
     if [[ -d "${root}/sys/firmware/efi/efivars" ]]; then
         mount -t efivarfs efivarfs "${root}/sys/firmware/efi/efivars" \
             -o nosuid,noexec,nodev 2>/dev/null || true
     fi
-    mount -t devtmpfs udev "${root}/dev" -o mode=0755,nosuid || return 1
+    mount -t devtmpfs udev "${root}/dev" -o mode=0755,nosuid || { _chroot_umount; return 1; }
     mount -t devpts devpts "${root}/dev/pts" \
-        -o mode=0620,gid=5,nosuid,noexec || return 1
-    mount -t tmpfs shm "${root}/dev/shm" -o mode=1777,nosuid,nodev || return 1
-    mount -t tmpfs run "${root}/run" -o nosuid,nodev,mode=0755 || return 1
+        -o mode=0620,gid=5,nosuid,noexec || { _chroot_umount; return 1; }
+    mount -t tmpfs shm "${root}/dev/shm" -o mode=1777,nosuid,nodev || { _chroot_umount; return 1; }
+    mount -t tmpfs run "${root}/run" -o nosuid,nodev,mode=0755 || { _chroot_umount; return 1; }
     mount -t tmpfs tmp "${root}/tmp" \
-        -o mode=1777,strictatime,nodev,nosuid || return 1
+        -o mode=1777,strictatime,nodev,nosuid || { _chroot_umount; return 1; }
 
     # Expose host lock directory for atomic-guard verification
     if [[ -d "${LOCK_DIR}" ]]; then
@@ -189,14 +202,7 @@ chroot_snapshot() {
         rm -f "$resolv_target"
         ln -sf "$resolv_link" "$resolv_target"
     fi
-    umount "${root}${LOCK_DIR}" 2>/dev/null
-    umount "${root}/tmp" 2>/dev/null
-    umount "${root}/run" 2>/dev/null
-    umount "${root}/dev/shm" 2>/dev/null
-    umount "${root}/dev/pts" 2>/dev/null
-    umount "${root}/dev" 2>/dev/null
-    umount "${root}/sys/firmware/efi/efivars" 2>/dev/null
-    umount "${root}/sys" 2>/dev/null
+    _chroot_umount
     umount "${root}/proc" 2>/dev/null
 
     return $rc
