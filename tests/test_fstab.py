@@ -107,12 +107,33 @@ class TestReplaceSubvol:
         e = FstabEntry.parse(raw)
         assert e.format() == raw
 
-    def test_format_modified_uses_tabs(self):
+    def test_format_modified_preserves_whitespace(self):
+        """Modified entry preserves original separator style."""
         e = FstabEntry.parse("UUID=x / btrfs rw,subvol=root-old 0 0\n")
         e.replace_subvol("root-old", "root-new")
         formatted = e.format()
-        assert "root-new" in formatted
-        assert "\t" in formatted
+        assert formatted == "UUID=x / btrfs rw,subvol=root-new 0 0\n"
+
+    def test_format_preserves_tabs(self):
+        """Tab-separated entries stay tab-separated after modification."""
+        raw = "UUID=x\t/\tbtrfs\trw,subvol=root-old\t0\t0\n"
+        e = FstabEntry.parse(raw)
+        e.replace_subvol("root-old", "root-new")
+        assert e.format() == "UUID=x\t/\tbtrfs\trw,subvol=root-new\t0\t0\n"
+
+    def test_format_preserves_mixed_whitespace(self):
+        """Mixed separator styles (tab + space) are preserved."""
+        raw = "UUID=x\t/\tbtrfs\trw,subvol=root-old\t0 0\n"
+        e = FstabEntry.parse(raw)
+        e.replace_subvol("root-old", "root-new")
+        assert e.format() == "UUID=x\t/\tbtrfs\trw,subvol=root-new\t0 0\n"
+
+    def test_format_preserves_multi_space(self):
+        """Double-space separators are preserved after modification."""
+        raw = "UUID=x  /  btrfs  rw,subvol=root-old  0  0\n"
+        e = FstabEntry.parse(raw)
+        e.replace_subvol("root-old", "root-new")
+        assert e.format() == "UUID=x  /  btrfs  rw,subvol=root-new  0  0\n"
 
     def test_tagged_subvol(self):
         e = FstabEntry.parse(
@@ -268,6 +289,14 @@ class TestUpdateFstab:
         assert "subvol=root-old not found" in err
         # Must NOT mention subvolid since there is none
         assert "subvolid=" not in err
+
+    def test_no_temp_files_left(self, tmp_path):
+        """Atomic write via mkstemp leaves no temp files on success."""
+        path = tmp_path / "fstab"
+        path.write_text("UUID=x / btrfs rw,subvol=root-old 0 0\n")
+        update_fstab(str(path), "root-old", "root-new")
+        leftover = [f for f in tmp_path.iterdir() if f != path]
+        assert leftover == [], f"Temp files left behind: {leftover}"
 
 
 class TestSetSubvol:
