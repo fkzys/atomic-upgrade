@@ -137,15 +137,23 @@ class FstabEntry:
         return changed
 
     def format(self) -> str:
-        """Format entry back to fstab line."""
-        if not self.is_data:
+        """Format entry back to fstab line.
+
+        Preserves original whitespace layout; only the options field
+        is substituted when the entry has been modified.
+        """
+        if not self.is_data or not self._modified:
             return self.raw
-        if not self._modified:
-            return self.raw
-        return (
-            f"{self.device}\t{self.mountpoint}\t{self.fstype}"
-            f"\t{self.options}\t{self.dump} {self.passno}\n"
-        )
+        # Replace only the 4th whitespace-delimited field (options)
+        # in the raw line, preserving original separator style.
+        count = 0
+
+        def _replace_options(m: re.Match) -> str:
+            nonlocal count
+            count += 1
+            return self.options if count == 4 else m.group(0)
+
+        return re.sub(r'\S+', _replace_options, self.raw)
 
 
 def _atomic_write(path: Path, entries: list) -> None:
