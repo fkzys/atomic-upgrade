@@ -266,6 +266,16 @@ load_config
 assert_eq "hash without space preserved" "rw console=ttyS0,115200n8#1" "$KERNEL_PARAMS"
 KERNEL_PARAMS="rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsyscall=none randomize_kstack_offset=on debugfs=off"
 
+# Test: ' #' inside value is treated as inline comment (documented limitation)
+CONFIG_FILE="${TESTDIR}/space_hash_in_value.conf"
+cat > "$CONFIG_FILE" <<'EOF'
+KERNEL_PARAMS=rw console=ttyS0 #debug
+EOF
+KERNEL_PARAMS="default"
+load_config
+assert_eq "space-hash treated as comment (documented)" "rw console=ttyS0" "$KERNEL_PARAMS"
+KERNEL_PARAMS="rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsyscall=none randomize_kstack_offset=on debugfs=off"
+
 # Test: unknown key → warning on stderr, known keys still applied.
 # Direct call for side effects; capture stderr to file.
 CONFIG_FILE="${TESTDIR}/unknown.conf"

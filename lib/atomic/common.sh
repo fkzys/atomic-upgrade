@@ -47,7 +47,10 @@ load_config() {
         value="${value#"${value%%[![:space:]]*}"}"
         value="${value%"${value##*[![:space:]]}"}"
 
-        # Strip inline comments
+        # Strip inline comments: everything after ' #' (space-hash).
+        # Limitation: values containing literal ' #' are truncated.
+        # Quoted values do not protect against this.  For kernel params
+        # and paths used in this config, this is not a practical concern.
         value="${value%% #*}"
         value="${value%"${value##*[![:space:]]}"}"
 
