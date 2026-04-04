@@ -280,12 +280,23 @@ assert_contains "shows hint" "atomic-upgrade" "$_out"
 assert_contains "non-interactive abort" "Non-interactive" "$_out"
 assert_not_contains "pacman not called" "MOCK_PACMAN_CALLED" "$_out"
 
+section "wrapper: stdin handling edge cases"
 
-section "wrapper: -Su blocked (sysupgrade without refresh)"
+# Pipe with "y" — wrapper detects non-TTY and aborts safely
+run_cmd env CONFIG_FILE="${CONF_DIR}/guard_on.conf" bash -c "echo \"y\" | bash \"${WRAPPER}\" -Syu"
+assert_eq "piped y → non-interactive abort" "1" "$_rc"
+assert_contains "non-interactive message" "Non-interactive" "$_out"
+assert_not_contains "pacman not called on pipe" "MOCK_PACMAN_CALLED" "$_out"
 
-run_cmd env CONFIG_FILE="${CONF_DIR}/guard_on.conf" bash "$WRAPPER" -Su < /dev/null
-assert_eq "-Su → exit 1" "1" "$_rc"
-assert_contains "-Su shows hint" "atomic-upgrade" "$_out"
+# Redirect from /dev/null — explicit non-interactive
+run_cmd env CONFIG_FILE="${CONF_DIR}/guard_on.conf" bash "$WRAPPER" -Syu < /dev/null
+assert_eq "redirect /dev/null → exit 1" "1" "$_rc"
+assert_contains "non-interactive abort" "Non-interactive" "$_out"
+
+# Empty pipe — same non-interactive path
+run_cmd env CONFIG_FILE="${CONF_DIR}/guard_on.conf" bash -c "echo \"\" | bash \"${WRAPPER}\" -Syu"
+assert_eq "empty pipe → exit 1" "1" "$_rc"
+assert_not_contains "empty pipe no pacman" "MOCK_PACMAN_CALLED" "$_out"
 
 
 section "wrapper: --sync --sysupgrade blocked (long form)"

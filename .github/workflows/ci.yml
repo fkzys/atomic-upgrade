@@ -48,6 +48,8 @@ jobs:
               - 'tests/test_gc.sh'
               - 'tests/test_uki.sh'
               - 'tests/test_home.sh'
+              - 'tests/test_upgrade.sh'
+              - 'tests/test_rebuild_uki.sh'
               - '.github/workflows/ci.yml'
             python:
               - 'lib/atomic/fstab.py'
@@ -113,7 +115,9 @@ jobs:
             tests/test_chroot.sh \
             tests/test_gc.sh \
             tests/test_uki.sh \
-            tests/test_home.sh; do
+            tests/test_home.sh \
+            tests/test_upgrade.sh \
+            tests/test_rebuild_uki.sh; do
             echo "━━━ $t ━━━"
             bash "$t" || exit 1
           done

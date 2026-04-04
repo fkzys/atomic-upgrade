@@ -1,6 +1,7 @@
 """Tests for lib/atomic/fstab.py"""
 
 import os
+import pytest
 from pathlib import Path
 
 import sys
@@ -451,3 +452,25 @@ class TestUpdateFstabHome:
         assert "subvol=/root-20250220-141710" in text
         assert "subvol=/log" in text
         assert "ABCD-1234" in text
+
+    def test_atomic_write_chmod_failure_cleanup(self, tmp_path, monkeypatch):
+        """Simulate chmod failure on temp file to verify cleanup and error raising."""
+        path = tmp_path / "fstab"
+        path.write_text("UUID=x / btrfs rw,subvol=old 0 0\n")
+
+        original_chmod = os.chmod
+
+        def fail_chmod_on_tmp(file_path, mode, *args, **kwargs):
+            # Allow chmod on backup files (.bak) created by shutil.copy2
+            if str(file_path).endswith('.tmp'):
+                raise OSError("Simulated chmod failure")
+            return original_chmod(file_path, mode, *args, **kwargs)
+
+        monkeypatch.setattr(os, "chmod", fail_chmod_on_tmp)
+
+        with pytest.raises(RuntimeError, match="Failed to set permissions"):
+            update_fstab(str(path), "old", "new")
+
+        # Verify that the temp file was cleaned up despite the error
+        leftovers = list(tmp_path.glob(".fstab.*.tmp"))
+        assert leftovers == [], f"Temp files left behind: {leftovers}"

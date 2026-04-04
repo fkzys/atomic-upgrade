@@ -538,3 +538,45 @@ class TestIntegration:
             "rootfstype=btrfs "
             "rootflags=subvol=/root-20250602"
         )
+
+    def test_findmnt_timeout_returns_empty(self):
+        """Timeout in findmnt returns empty dict."""
+        with patch("rootdev.subprocess.run", side_effect=subprocess.TimeoutExpired("findmnt", 10)):
+            assert detect_root() == {}
+
+    def test_findmnt_not_found_returns_empty(self):
+        """Missing findmnt returns empty dict."""
+        with patch("rootdev.subprocess.run", side_effect=FileNotFoundError):
+            assert detect_root() == {}
+
+    def test_dmsetup_not_found_falls_back_to_plain(self):
+        """Missing dmsetup → treated as plain (not LUKS/LVM)."""
+        def fake(*cmd):
+            if cmd == ("findmnt", "-n", "-J", "-o", "SOURCE,FSTYPE,OPTIONS", "/"):
+                return json.dumps({
+                    "filesystems": [{
+                        "source": "/dev/mapper/vg0-root",
+                        "fstype": "btrfs",
+                        "options": "rw,subvol=/root",
+                    }]
+                })
+            # dmsetup, lvs, pvs all not found
+            return ""
+
+        with patch("rootdev.run", side_effect=fake):
+            info = detect_root()
+        assert info["type"] == "plain"
+        assert info["root_arg"] == "/dev/mapper/vg0-root"
+
+    def test_cryptsetup_status_missing_device_line(self):
+        """cryptsetup status without 'device:' line → luks_uuid stays None."""
+        responses = [
+            (("findmnt", "-n", "-J", "-o", "SOURCE,FSTYPE,OPTIONS", "/"), FINDMNT_LUKS),
+            (("dmsetup", "table", "--target", "crypt", "root_crypt"), "0 123 crypt aes"),
+            (("cryptsetup", "status", "root_crypt"), "  type:  LUKS2\n  cipher:  aes-xts\n"),
+        ]
+        with patch("rootdev.run", side_effect=_mock_run(responses)):
+            info = detect_root()
+        assert info["type"] == "luks"
+        assert info["luks_uuid"] is None
+        assert info["luks_name"] == "root_crypt"
