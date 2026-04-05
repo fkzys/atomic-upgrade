@@ -298,7 +298,6 @@ echo ":: Building UKI..."
 UKI_PATH=$(build_uki "$GEN_ID" "$NEW_ROOT" "$NEW_SUBVOL") || exit 1
 
 sign_uki "$UKI_PATH" || { exit 1; }
-SNAPSHOT_CREATED=0  # Upgrade committed — unmount failure must not trigger rollback
 
 echo ":: Unmounting new root..."
 if ! umount -R "$NEW_ROOT" 2>/dev/null; then
@@ -311,6 +310,8 @@ if mountpoint -q "$NEW_ROOT" 2>/dev/null; then
 fi
 
 verify_uki "$UKI_PATH"
+
+SNAPSHOT_CREATED=0  # Upgrade committed — verify failure must not trigger rollback
 
 if [[ "$NO_GC" -eq 0 ]]; then
     echo ":: Running garbage collection..."
