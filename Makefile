@@ -36,7 +36,9 @@ UNIT_TESTS = \
 	tests/test_chroot.sh \
 	tests/test_gc.sh \
 	tests/test_uki.sh \
-	tests/test_home.sh
+	tests/test_home.sh \
+	tests/test_upgrade.sh \
+	tests/test_rebuild_uki.sh
 
 test:
 	@for t in $(UNIT_TESTS); do \

@@ -13,259 +13,142 @@ SCRIPT="${PROJECT_ROOT}/bin/atomic-rebuild-uki"
 # so that the subsequent 'source' call succeeds.
 make_mock verify-lib "echo '${PROJECT_ROOT}/lib/atomic/common.sh'; exit 0"
 
-# ── Help flag ───────────────────────────────────────────────
+# ── Help flag (real script) ────────────────────────────────
 
-section "Help flag"
+section "Help flag (real script)"
 
-# Bypass config loading to avoid environment-dependent failures
 run_cmd env _ATOMIC_NO_INIT=1 bash "$SCRIPT" --help
+assert_eq "help → exit 0" "0" "$_rc"
 assert_contains "help shows usage" "Usage:" "$_out"
 assert_contains "help shows --list" "--list" "$_out"
 assert_contains "help shows GEN_ID" "GEN_ID" "$_out"
+assert_contains "help shows examples" "Examples:" "$_out"
 
-# ── GEN_ID validation ───────────────────────────────────────
+run_cmd env _ATOMIC_NO_INIT=1 bash "$SCRIPT" -h
+assert_eq "-h → exit 0" "0" "$_rc"
 
-section "GEN_ID validation"
+# ── GEN_ID validation (patched script — bypasses EUID + validate_config) ──
 
-_validate_gen_id() {
-    local gen_id="$1"
-    if [[ ! "$gen_id" =~ ^[0-9]{8}-[0-9]{6}(-[a-zA-Z0-9_-]+)?$ ]]; then
-        echo "ERROR: Invalid GEN_ID format: $gen_id (expected YYYYMMDD-HHMMSS[-tag])" >&2
-        return 1
-    fi
-    return 0
+section "GEN_ID validation (patched script)"
+
+# Create a patched copy that skips EUID and validate_config, then exits
+# right after GEN_ID validation so we can test the regex against the real script.
+_TEST_SCRIPT="${TESTDIR}/rebuild-uki-test"
+sed \
+    -e 's/^\(\[\[ \$EUID -eq 0 \]\]\)/# \1/' \
+    -e 's/^validate_config || exit 1$/# validate_config || exit 1/' \
+    -e '/^UKI_PATH=.*GEN_ID.*efi"/a\
+# --- EARLY EXIT AFTER GEN_ID VALIDATION ---\
+if [[ "${ATOMIC_EXIT_AFTER_VALIDATE:-}" == "1" ]]; then\
+    echo "VALIDATE_OK"\
+    echo "GEN_ID=${GEN_ID}"\
+    echo "SUBVOL=${SUBVOL}"\
+    echo "UKI_PATH=${UKI_PATH}"\
+    exit 0\
+fi' \
+    "$SCRIPT" > "$_TEST_SCRIPT"
+chmod +x "$_TEST_SCRIPT"
+
+_run_rebuild() {
+    run_cmd env ATOMIC_EXIT_AFTER_VALIDATE=1 _ATOMIC_NO_INIT=1 bash "$_TEST_SCRIPT" "$@"
 }
 
-run_cmd _validate_gen_id "20250208-134725"
+# Valid GEN_IDs — should pass validation
+_run_rebuild "20250208-134725"
 assert_eq "plain GEN_ID valid" "0" "$_rc"
+assert_contains "plain GEN_ID echo" "VALIDATE_OK" "$_out"
+assert_contains "GEN_ID value" "GEN_ID=20250208-134725" "$_out"
+assert_contains "SUBVOL value" "SUBVOL=root-20250208-134725" "$_out"
+assert_contains "UKI_PATH value" "UKI_PATH=/efi/EFI/Linux/arch-20250208-134725.efi" "$_out"
 
-run_cmd _validate_gen_id "20250208-134725-kde"
+_run_rebuild "20250208-134725-kde"
 assert_eq "tagged GEN_ID valid" "0" "$_rc"
+assert_contains "tagged SUBVOL" "SUBVOL=root-20250208-134725-kde" "$_out"
+assert_contains "tagged UKI_PATH" "UKI_PATH=/efi/EFI/Linux/arch-20250208-134725-kde.efi" "$_out"
 
-run_cmd _validate_gen_id "20250208-134725-pre-nvidia"
+_run_rebuild "20250208-134725-pre-nvidia"
 assert_eq "multi-word tag valid" "0" "$_rc"
 
-run_cmd _validate_gen_id "20250208-134725-test_123"
+_run_rebuild "20250208-134725-test_123"
 assert_eq "underscore in tag valid" "0" "$_rc"
 
-run_cmd _validate_gen_id "20250208"
+# Invalid GEN_IDs — should fail validation
+_run_rebuild "20250208"
 assert_eq "missing time → invalid" "1" "$_rc"
 assert_contains "missing time error" "YYYYMMDD-HHMMSS" "$_out"
 
-run_cmd _validate_gen_id "20250208-1347"
+_run_rebuild "20250208-1347"
 assert_eq "short time → invalid" "1" "$_rc"
 
-run_cmd _validate_gen_id "not-a-date"
+_run_rebuild "not-a-date"
 assert_eq "non-date → invalid" "1" "$_rc"
 
-run_cmd _validate_gen_id ""
+_run_rebuild ""
 assert_eq "empty → invalid" "1" "$_rc"
 
-run_cmd _validate_gen_id "../../etc/passwd"
+_run_rebuild "../../etc/passwd"
 assert_eq "path traversal → invalid" "1" "$_rc"
 
-run_cmd _validate_gen_id "20250208-134725/evil"
+_run_rebuild "20250208-134725/evil"
 assert_eq "slash in tag → invalid" "1" "$_rc"
 
-# ── list_orphans simulation ─────────────────────────────────
+# ── list_orphans: verify the function exists in the real script ──
 
-section "list_orphans simulation"
+section "list_orphans: verify function in real script"
 
-_list_orphans_sim() {
-    local esp="$1" btrfs_mount="$2"
+# The list_orphans function is tested via --list in integration.
+# Here we verify its key code patterns exist in the script.
+_script_content=$(cat "$SCRIPT")
 
-    echo "Subvolumes → UKI status:"
-    echo ""
+assert_contains "has list_orphans function" 'list_orphans()' "$_script_content"
+assert_contains "has subvolume glob pattern" 'root-[0-9]*' "$_script_content"
+# Use grep for regex patterns (assert_contains does glob matching only)
+grep -q 'arch-.*\.efi' "$SCRIPT" && ok "has UKI file pattern" || fail "has UKI file pattern"
+assert_contains "has UKI exists message" 'UKI exists' "$_script_content"
+assert_contains "has UKI missing message" 'UKI missing' "$_script_content"
+assert_contains "has empty message" 'No generation subvolumes found' "$_script_content"
+assert_contains "has reverse sort" 'sort -r' "$_script_content"
 
-    local found=0
-    local -a dirs=()
-    for dir in "${btrfs_mount}"/root-[0-9]*; do
-        [[ -d "$dir" ]] || continue
-        dirs+=("$dir")
-    done
+# ── Overwrite confirmation: verify the prompt exists in real script ──
 
-    if [[ ${#dirs[@]} -gt 0 ]]; then
-        readarray -t dirs < <(printf '%s\n' "${dirs[@]}" | sort -r)
-    fi
+section "Overwrite confirmation: verify in real script"
 
-    for dir in "${dirs[@]}"; do
-        local name="${dir##*/}"
-        local gen_id="${name#root-}"
-        local uki="${esp}/EFI/Linux/arch-${gen_id}.efi"
-        if [[ -f "$uki" ]]; then
-            echo "  ${gen_id}  ✓ UKI exists"
-        else
-            echo "  ${gen_id}  ✗ UKI missing"
-        fi
-        found=1
-    done
+assert_contains "has 'already exists' message" 'UKI already exists' "$_script_content"
+assert_contains "has overwrite prompt" 'Overwrite?' "$_script_content"
+grep -qF '[y/N]' "$SCRIPT" && ok "has [y/N] default" || fail "has [y/N] default"
+grep -qF '[Yy]' "$SCRIPT" && ok "has [Yy] match pattern" || fail "has [Yy] match pattern"
+assert_contains "has aborted message" 'Aborted.' "$_script_content"
 
-    if [[ $found -eq 0 ]]; then
-        echo "  No generation subvolumes found"
-    fi
-}
+# ── Cleanup trap: verify in real script ──
 
-_ESP_LIST="${TESTDIR}/esp_list"
-_BTRFS_LIST="${TESTDIR}/btrfs_list"
-mkdir -p "${_ESP_LIST}/EFI/Linux" "$_BTRFS_LIST"
+section "Cleanup trap: verify in real script"
 
-# No subvolumes
-_output=$(_list_orphans_sim "$_ESP_LIST" "$_BTRFS_LIST")
-assert_contains "empty list message" "No generation subvolumes found" "$_output"
+assert_contains "has cleanup_rebuild function" 'cleanup_rebuild()' "$_script_content"
+assert_contains "trap references cleanup" 'trap cleanup_rebuild EXIT' "$_script_content"
+grep -q 'umount.*MOUNT_DIR' "$SCRIPT" && ok "cleanup unmounts MOUNT_DIR" || fail "cleanup unmounts MOUNT_DIR"
+grep -q 'rmdir.*MOUNT_DIR' "$SCRIPT" && ok "cleanup removes MOUNT_DIR" || fail "cleanup removes MOUNT_DIR"
+grep -q 'umount.*BTRFS_MOUNT' "$SCRIPT" && ok "cleanup unmounts BTRFS" || fail "cleanup unmounts BTRFS"
+assert_contains "cleanup closes lock" 'LOCK_FD' "$_script_content"
 
-# Create subvolumes
-mkdir -p "${_BTRFS_LIST}/root-20250601-120000"
-mkdir -p "${_BTRFS_LIST}/root-20250602-090000"
-mkdir -p "${_BTRFS_LIST}/root-20250603-150000-kde"
+# ── UKI path construction: verify in real script ──
 
-# Only some have UKI
-touch "${_ESP_LIST}/EFI/Linux/arch-20250601-120000.efi"
-touch "${_ESP_LIST}/EFI/Linux/arch-20250603-150000-kde.efi"
-# 20250602-090000 has no UKI
+section "UKI path construction: verify in real script"
 
-_output=$(_list_orphans_sim "$_ESP_LIST" "$_BTRFS_LIST")
-assert_contains "shows UKI exists" "✓ UKI exists" "$_output"
-assert_contains "shows UKI missing" "✗ UKI missing" "$_output"
+grep -q 'arch-.*\.efi' "$SCRIPT" && ok "has UKI path pattern" || fail "has UKI path pattern"
+assert_contains "uses GEN_ID in path" 'arch-${GEN_ID}' "$_script_content"
+grep -qF 'EFI/Linux' "$SCRIPT" && ok "uses ESP path" || fail "uses ESP path"
 
-# Verify ordering (newest first)
-_first_line=$(echo "$_output" | grep -E "^[[:space:]]+[0-9]" | head -1)
-assert_contains "newest first" "20250603" "$_first_line"
+# ── Rebuild flow: verify the sequence in real script ──
 
-_last_line=$(echo "$_output" | grep -E "^[[:space:]]+[0-9]" | tail -1)
-assert_contains "oldest last" "20250601" "$_last_line"
+section "Rebuild flow: verify sequence in real script"
 
-# ── Rebuild flow simulation ─────────────────────────────────
-
-section "Rebuild flow simulation"
-
-# Simulate the rebuild flow without actual mounts
-_rebuild_flow_sim() {
-    local gen_id="$1"
-    local esp="$2"
-    local btrfs_mount="$3"
-    local uki_path="${esp}/EFI/Linux/arch-${gen_id}.efi"
-    local subvol="root-${gen_id}"
-
-    # Check subvol exists
-    if [[ ! -d "${btrfs_mount}/${subvol}" ]]; then
-        echo "ERROR: Subvolume not found: $subvol" >&2
-        return 1
-    fi
-
-    # Check if UKI already exists
-    if [[ -f "$uki_path" ]]; then
-        echo "UKI already exists: $uki_path"
-        echo "WOULD_ASK_OVERWRITE"
-    fi
-
-    echo ":: Checking subvolume..."
-    echo ":: Building UKI..."
-    echo ":: Signing UKI..."
-    echo "Done: ${uki_path}"
-    return 0
-}
-
-_ESP_RB="${TESTDIR}/esp_rb"
-_BTRFS_RB="${TESTDIR}/btrfs_rb"
-mkdir -p "${_ESP_RB}/EFI/Linux" "$_BTRFS_RB"
-mkdir -p "${_BTRFS_RB}/root-20250601-120000"
-
-# Happy path: subvol exists, no UKI yet
-_output=$(_rebuild_flow_sim "20250601-120000" "$_ESP_RB" "$_BTRFS_RB")
-assert_contains "rebuild checks subvol" "Checking subvolume" "$_output"
-assert_contains "rebuild builds UKI" "Building UKI" "$_output"
-assert_contains "rebuild signs UKI" "Signing UKI" "$_output"
-assert_contains "rebuild done" "Done:" "$_output"
-assert_not_contains "no overwrite prompt" "WOULD_ASK_OVERWRITE" "$_output"
-
-# UKI already exists → would prompt
-touch "${_ESP_RB}/EFI/Linux/arch-20250601-120000.efi"
-_output=$(_rebuild_flow_sim "20250601-120000" "$_ESP_RB" "$_BTRFS_RB")
-assert_contains "overwrite prompt shown" "WOULD_ASK_OVERWRITE" "$_output"
-
-# Subvol missing → error
-_output=$(_rebuild_flow_sim "20250699-999999" "$_ESP_RB" "$_BTRFS_RB" 2>&1)
-assert_contains "missing subvol error" "Subvolume not found" "$_output"
-
-# ── Overwrite confirmation logic ────────────────────────────
-
-section "Overwrite confirmation logic"
-
-_confirm_overwrite() {
-    local answer="$1"
-    case "$answer" in
-        [Yy]*) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
-run_cmd _confirm_overwrite "y"
-assert_eq "lowercase y → proceed" "0" "$_rc"
-
-run_cmd _confirm_overwrite "Y"
-assert_eq "uppercase Y → proceed" "0" "$_rc"
-
-run_cmd _confirm_overwrite "n"
-assert_eq "n → abort" "1" "$_rc"
-
-run_cmd _confirm_overwrite "N"
-assert_eq "N → abort" "1" "$_rc"
-
-run_cmd _confirm_overwrite ""
-assert_eq "empty → abort" "1" "$_rc"
-
-run_cmd _confirm_overwrite "yes"
-assert_eq "yes → proceeds (matches [Yy]*)" "0" "$_rc"
-
-# ── UKI path construction ───────────────────────────────────
-
-section "UKI path construction"
-
-assert_eq "plain UKI path" "/efi/EFI/Linux/arch-20250601-120000.efi" \
-    "/efi/EFI/Linux/arch-20250601-120000.efi"
-
-assert_eq "tagged UKI path" "/efi/EFI/Linux/arch-20250601-120000-kde.efi" \
-    "/efi/EFI/Linux/arch-20250601-120000-kde.efi"
-
-# ── Cleanup trap simulation ─────────────────────────────────
-
-section "Cleanup trap simulation"
-
-# Verify cleanup would unmount and remove temp dirs
-_cleanup_rebuild_sim() {
-    local mount_dir="$1"
-    local btrfs_mount="$2"
-    local lock_fd="$3"
-
-    local actions=()
-
-    if [[ -n "$mount_dir" ]]; then
-        actions+=("umount $mount_dir")
-        actions+=("rmdir $mount_dir")
-    fi
-
-    actions+=("umount $btrfs_mount")
-
-    if [[ -n "$lock_fd" ]]; then
-        actions+=("close fd $lock_fd")
-    fi
-
-    printf '%s\n' "${actions[@]}"
-}
-
-_output=$(_cleanup_rebuild_sim "/tmp/atomic-rebuild.XXXXXX" "/run/atomic/temp_root" "5")
-assert_contains "cleanup unmounts temp" "umount /tmp/atomic-rebuild" "$_output"
-assert_contains "cleanup removes temp dir" "rmdir /tmp/atomic-rebuild" "$_output"
-assert_contains "cleanup unmounts btrfs" "umount /run/atomic/temp_root" "$_output"
-assert_contains "cleanup closes lock" "close fd 5" "$_output"
-
-# No mount dir → skip
-_output=$(_cleanup_rebuild_sim "" "/run/atomic/temp_root" "5")
-assert_not_contains "no temp unmount" "umount /tmp" "$_output"
-assert_contains "still unmounts btrfs" "umount /run/atomic/temp_root" "$_output"
-
-# No lock fd → skip
-_output=$(_cleanup_rebuild_sim "/tmp/test" "/run/atomic/temp_root" "")
-assert_not_contains "no fd close" "close fd" "$_output"
+# Verify the script follows the expected order:
+# validate_config → check UKI exists → acquire_lock → ensure_btrfs →
+# validate_subvolume → mount → build_uki → sign → unmount
+assert_contains "has subvolume check" 'Checking subvolume' "$_script_content"
+assert_contains "has build UKI call" 'Building UKI' "$_script_content"
+assert_contains "has sign call" 'sign_uki' "$_script_content"
+assert_contains "has unmount" 'Unmounting' "$_script_content"
+assert_contains "has done message" 'Done:' "$_script_content"
 
 summary

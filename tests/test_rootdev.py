@@ -68,15 +68,6 @@ FINDMNT_PLAIN = json.dumps({
 
 class TestDetectRootPlain:
     def test_plain_btrfs(self):
-        """Return a side_effect function that maps command tuples to outputs."""
-        def fake(*cmd):
-            for key, val in responses:
-                if cmd == key:
-                    return val
-            return ""
-        return fake
-
-    def test_plain_btrfs(self):
         responses = [
             (("findmnt", "-n", "-J", "-o", "SOURCE,FSTYPE,OPTIONS", "/"), FINDMNT_PLAIN),
             (("blkid", "-s", "UUID", "-o", "value", "/dev/sda2"), "aaaa-bbbb-cccc"),
@@ -168,14 +159,6 @@ CRYPTSETUP_STATUS = """\
 
 class TestDetectRootLuks:
     def test_luks(self):
-        def fake(*cmd):
-            for key, val in responses:
-                if cmd == key:
-                    return val
-            return ""
-        return fake
-
-    def test_luks(self):
         responses = [
             (("findmnt", "-n", "-J", "-o", "SOURCE,FSTYPE,OPTIONS", "/"), FINDMNT_LUKS),
             (("dmsetup", "table", "--target", "crypt", "root_crypt"), "0 123 crypt aes-xts"),
@@ -215,14 +198,6 @@ FINDMNT_LVM = json.dumps({
 
 
 class TestDetectRootLvm:
-    def test_lvm_plain(self):
-        def fake(*cmd):
-            for key, val in responses:
-                if cmd == key:
-                    return val
-            return ""
-        return fake
-
     def test_lvm_plain(self):
         responses = [
             (("findmnt", "-n", "-J", "-o", "SOURCE,FSTYPE,OPTIONS", "/"), FINDMNT_LVM),
