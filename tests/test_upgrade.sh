@@ -11,281 +11,197 @@ SCRIPT="${PROJECT_ROOT}/bin/atomic-upgrade"
 # Mock verify-lib to return the path of the library
 make_mock verify-lib 'echo "$1"; exit 0'
 
-# We cannot run atomic-upgrade as root in tests, so we test
-# argument parsing and validation by sourcing the script in a
-# controlled environment where we intercept the root check.
-# We create a wrapper that skips the EUID check.
+# Create a testable copy of atomic-upgrade:
+# - Skips the EUID check (tests don't run as root)
+# - Exits after argument parsing, validation, AND default chroot command
+#   so we can inspect parsed variables without hitting validate_config
+TEST_SCRIPT="${TESTDIR}/atomic-upgrade-test"
 
-_wrap_upgrade() {
-    # Read the script, comment out the EUID check, then eval
-    local script_content
-    script_content=$(sed 's/^\(\[\[ \$EUID -eq 0 \]\]\)/# \1/' "$SCRIPT")
-    eval "$script_content"
+_build_test_script() {
+    sed \
+        -e 's/^\(\[\[ \$EUID -eq 0 \]\]\)/# \1/' \
+        -e '/^# Verify required variables are set$/i\
+if [[ "${ATOMIC_EXIT_AFTER_PARSE:-}" == "1" ]]; then\
+    echo "PARSE_OK"\
+    echo "DRY_RUN=${DRY_RUN}"\
+    echo "CUSTOM_TAG=${CUSTOM_TAG}"\
+    echo "NO_GC=${NO_GC}"\
+    echo "SEPARATE_HOME=${SEPARATE_HOME}"\
+    echo "COPY_FILES=${COPY_FILES}"\
+    echo "CHROOT_CMD_COUNT=${#CHROOT_CMD[@]}"\
+    for i in "${!CHROOT_CMD[@]}"; do\
+        echo "CHROOT_CMD_${i}=${CHROOT_CMD[$i]}"\
+    done\
+    exit 0\
+fi\
+' \
+        "$SCRIPT" > "$TEST_SCRIPT"
+    chmod +x "$TEST_SCRIPT"
 }
 
-# ── Argument parsing ────────────────────────────────────────
+_build_test_script
 
-section "Argument parsing: basic options"
-
-# Test --dry-run
-DRY_RUN=0
-CUSTOM_TAG=""
-NO_GC=0
-SEPARATE_HOME=0
-COPY_FILES=""
-CHROOT_CMD=()
-ATOMIC_UPGRADE=1
-
-# Simulate parsing by extracting the while loop from atomic-upgrade
-_parse_args() {
-    DRY_RUN=0
-    CUSTOM_TAG=""
-    NO_GC=0
-    SEPARATE_HOME=0
-    COPY_FILES=""
-    CHROOT_CMD=()
-
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --dry-run|-n) DRY_RUN=1; shift ;;
-            --tag|-t)
-                [[ -n "${2:-}" ]] || { echo "ERROR: --tag requires an argument" >&2; return 1; }
-                CUSTOM_TAG="$2"
-                shift 2
-                ;;
-            --no-gc) NO_GC=1; shift ;;
-            --separate-home) SEPARATE_HOME=1; shift ;;
-            --copy-files)
-                [[ -n "${2:-}" ]] || { echo "ERROR: --copy-files requires an argument" >&2; return 1; }
-                COPY_FILES="$2"; shift 2
-                ;;
-            --) shift; CHROOT_CMD=("$@"); break ;;
-            -*) echo "ERROR: Unknown option: $1" >&2; return 1 ;;
-            *) echo "ERROR: Unexpected argument: $1. Use -- before commands." >&2; return 1 ;;
-        esac
-    done
+# Helper: run the test script and capture rc + output
+run_upgrade() {
+    run_cmd bash "$TEST_SCRIPT" "$@"
 }
 
-_parse_args --dry-run
-assert_eq "--dry-run sets DRY_RUN" "1" "$DRY_RUN"
-assert_eq "--dry-run short form" "1" "$DRY_RUN"
+# Helper: run with ATOMIC_EXIT_AFTER_PARSE=1 to capture variable state
+run_upgrade_parse() {
+    run_cmd env ATOMIC_EXIT_AFTER_PARSE=1 bash "$TEST_SCRIPT" "$@"
+}
 
-_parse_args -n
-assert_eq "-n sets DRY_RUN" "1" "$DRY_RUN"
+# ── Help & version (real script, no patching needed) ───────
 
-_parse_args --no-gc
-assert_eq "--no-gc sets NO_GC" "1" "$NO_GC"
+section "Help & version"
 
-_parse_args --separate-home
-assert_eq "--separate-home sets SEPARATE_HOME" "1" "$SEPARATE_HOME"
+run_cmd bash "$SCRIPT" --help
+assert_eq "help → exit 0" "0" "$_rc"
+assert_contains "help shows Usage" "Usage:" "$_out"
+assert_contains "help shows --dry-run" "--dry-run" "$_out"
+assert_contains "help shows --tag" "--tag" "$_out"
+assert_contains "help shows --no-gc" "--no-gc" "$_out"
+assert_contains "help shows --separate-home" "--separate-home" "$_out"
+assert_contains "help shows --copy-files" "--copy-files" "$_out"
 
-_parse_args --tag mytag
-assert_eq "--tag sets CUSTOM_TAG" "mytag" "$CUSTOM_TAG"
+run_cmd bash "$SCRIPT" -h
+assert_eq "-h → exit 0" "0" "$_rc"
 
-_parse_args -t pre-nvidia
-assert_eq "-t sets CUSTOM_TAG" "pre-nvidia" "$CUSTOM_TAG"
+run_cmd bash "$SCRIPT" -V
+assert_eq "-V → exit 0" "0" "$_rc"
+assert_contains "version output" "atomic-upgrade v" "$_out"
 
-_parse_args --copy-files ".bashrc .ssh"
-assert_eq "--copy-files sets COPY_FILES" ".bashrc .ssh" "$COPY_FILES"
+run_cmd bash "$SCRIPT" --version
+assert_eq "--version → exit 0" "0" "$_rc"
 
-# ── Argument parsing: chroot command ────────────────────────
+# ── Argument parsing: errors (real script, exits before validate_config) ──
 
-section "Argument parsing: chroot command"
+section "Argument parsing: error cases (real script)"
 
-_parse_args -- pacman -S vim
-assert_eq "chroot command after --" "3" "${#CHROOT_CMD[@]}"
-assert_eq "chroot cmd[0]" "pacman" "${CHROOT_CMD[0]}"
-assert_eq "chroot cmd[1]" "-S" "${CHROOT_CMD[1]}"
-assert_eq "chroot cmd[2]" "vim" "${CHROOT_CMD[2]}"
-
-_parse_args -- /usr/bin/pacman -S --needed base-devel git
-assert_eq "multi-arg chroot command" "5" "${#CHROOT_CMD[@]}"
-assert_eq "chroot cmd[0]" "/usr/bin/pacman" "${CHROOT_CMD[0]}"
-assert_eq "chroot cmd[2]" "--needed" "${CHROOT_CMD[2]}"
-assert_eq "chroot cmd[4]" "git" "${CHROOT_CMD[4]}"
-
-# ── Argument parsing: errors ────────────────────────────────
-
-section "Argument parsing: error cases"
-
-run_cmd _parse_args --tag
-assert_eq "--tag without arg → rc 1" "1" "$_rc"
-assert_contains "--tag error message" "requires an argument" "$_out"
-
-run_cmd _parse_args --copy-files
-assert_eq "--copy-files without arg → rc 1" "1" "$_rc"
-assert_contains "--copy-files error message" "requires an argument" "$_out"
-
-run_cmd _parse_args --unknown
+run_upgrade --unknown
 assert_eq "unknown option → rc 1" "1" "$_rc"
 assert_contains "unknown option error" "Unknown option" "$_out"
 
-run_cmd _parse_args bare-arg
+run_upgrade bare-arg
 assert_eq "bare argument → rc 1" "1" "$_rc"
 assert_contains "bare arg error" "Unexpected argument" "$_out"
 
-run_cmd _parse_args -t
+run_upgrade --tag
+assert_eq "--tag without arg → rc 1" "1" "$_rc"
+assert_contains "--tag error message" "requires an argument" "$_out"
+
+run_upgrade -t
 assert_eq "-t without arg → rc 1" "1" "$_rc"
 
-# ── Tag validation ──────────────────────────────────────────
+run_upgrade --copy-files
+assert_eq "--copy-files without arg → rc 1" "1" "$_rc"
+assert_contains "--copy-files error message" "requires an argument" "$_out"
 
-section "Tag validation"
+# ── Constraint checks (real script, exits before validate_config) ──
 
-_validate_tag() {
-    local tag="$1"
-    if [[ ! "$tag" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-        echo "ERROR: Invalid tag '${tag}'. Use only letters, numbers, hyphens, underscores." >&2
-        return 1
-    fi
-    if [[ ${#tag} -gt 48 ]]; then
-        echo "ERROR: Tag too long (max 48 characters)" >&2
-        return 1
-    fi
-    return 0
-}
+section "Constraint checks (real script)"
 
-run_cmd _validate_tag "pre-nvidia"
-assert_eq "valid tag → rc 0" "0" "$_rc"
+run_upgrade --separate-home
+assert_eq "separate-home without tag → rc 1" "1" "$_rc"
+assert_contains "separate-home error" "requires --tag" "$_out"
 
-run_cmd _validate_tag "test_123"
-assert_eq "valid tag with underscore → rc 0" "0" "$_rc"
+run_upgrade --copy-files ".bashrc"
+assert_eq "copy-files without separate-home → rc 1" "1" "$_rc"
+assert_contains "copy-files error" "requires --separate-home" "$_out"
 
-run_cmd _validate_tag "with spaces"
+# ── Tag validation (patched script to avoid validate_config) ──
+
+section "Tag validation (patched script)"
+
+# Valid tags should pass parsing; we use the patched script to stop
+# before validate_config so we get clean exit codes.
+
+run_upgrade_parse -t "pre-nvidia"
+assert_eq "valid tag hyphen → rc 0" "0" "$_rc"
+
+run_upgrade_parse -t "test_123"
+assert_eq "valid tag underscore → rc 0" "0" "$_rc"
+
+run_upgrade -t "with spaces"
 assert_eq "tag with spaces → rc 1" "1" "$_rc"
 assert_contains "spaces error" "Invalid tag" "$_out"
 
-run_cmd _validate_tag "with/slash"
+run_upgrade -t "with/slash"
 assert_eq "tag with slash → rc 1" "1" "$_rc"
 
-run_cmd _validate_tag "with.dot"
+run_upgrade -t "with.dot"
 assert_eq "tag with dot → rc 1" "1" "$_rc"
 
 # 49 characters — too long
-run_cmd _validate_tag "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+run_upgrade -t "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 assert_eq "tag too long (49 chars) → rc 1" "1" "$_rc"
 assert_contains "too long error" "Tag too long" "$_out"
 
 # 48 characters — exactly at limit
-run_cmd _validate_tag "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+run_upgrade_parse -t "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 assert_eq "tag at limit (48 chars) → rc 0" "0" "$_rc"
 
-# ── Dependency constraints ──────────────────────────────────
+# ── Argument parsing: variable inspection via early-exit patch ──
 
-section "Dependency constraints"
+section "Argument parsing: variable state (patched script)"
 
-_check_constraints() {
-    local separate_home="$1" custom_tag="$2" copy_files="$3"
+run_upgrade_parse --dry-run
+assert_eq "parse succeeds" "0" "$_rc"
+assert_contains "PARSE_OK marker" "PARSE_OK" "$_out"
+assert_eq "DRY_RUN=1" "DRY_RUN=1" "$(echo "$_out" | grep '^DRY_RUN=')"
+assert_eq "CUSTOM_TAG empty" "CUSTOM_TAG=" "$(echo "$_out" | grep '^CUSTOM_TAG=')"
+assert_eq "NO_GC=0" "NO_GC=0" "$(echo "$_out" | grep '^NO_GC=')"
 
-    if [[ $separate_home -eq 1 && -z "$custom_tag" ]]; then
-        echo "ERROR: --separate-home requires --tag (home subvolume is named home-TAG)" >&2
-        return 1
-    fi
+run_upgrade_parse -n
+assert_eq "-n → DRY_RUN=1" "DRY_RUN=1" "$(echo "$_out" | grep '^DRY_RUN=')"
 
-    if [[ $separate_home -eq 0 && -n "$copy_files" ]]; then
-        echo "ERROR: --copy-files requires --separate-home" >&2
-        return 1
-    fi
+run_upgrade_parse --no-gc
+assert_eq "--no-gc → NO_GC=1" "NO_GC=1" "$(echo "$_out" | grep '^NO_GC=')"
 
-    return 0
-}
+run_upgrade_parse --separate-home -t mytag
+assert_eq "SEPARATE_HOME=1" "SEPARATE_HOME=1" "$(echo "$_out" | grep '^SEPARATE_HOME=')"
+assert_eq "CUSTOM_TAG=mytag" "CUSTOM_TAG=mytag" "$(echo "$_out" | grep '^CUSTOM_TAG=')"
 
-run_cmd _check_constraints 1 "" ""
-assert_eq "separate-home without tag → rc 1" "1" "$_rc"
-assert_contains "separate-home error" "requires --tag" "$_out"
+run_upgrade_parse --tag pre-nvidia
+assert_eq "-t → CUSTOM_TAG" "CUSTOM_TAG=pre-nvidia" "$(echo "$_out" | grep '^CUSTOM_TAG=')"
 
-run_cmd _check_constraints 0 "" ".bashrc"
-assert_eq "copy-files without separate-home → rc 1" "1" "$_rc"
-assert_contains "copy-files error" "requires --separate-home" "$_out"
+run_upgrade_parse --copy-files ".bashrc .ssh" --separate-home -t test
+assert_eq "COPY_FILES set" "COPY_FILES=.bashrc .ssh" "$(echo "$_out" | grep '^COPY_FILES=')"
 
-run_cmd _check_constraints 1 "mytag" ""
-assert_eq "separate-home with tag → rc 0" "0" "$_rc"
+# Combined flags
+run_upgrade_parse --dry-run --no-gc --tag pre-nvidia
+assert_eq "combined: DRY_RUN=1" "DRY_RUN=1" "$(echo "$_out" | grep '^DRY_RUN=')"
+assert_eq "combined: NO_GC=1" "NO_GC=1" "$(echo "$_out" | grep '^NO_GC=')"
+assert_eq "combined: CUSTOM_TAG" "CUSTOM_TAG=pre-nvidia" "$(echo "$_out" | grep '^CUSTOM_TAG=')"
 
-run_cmd _check_constraints 1 "mytag" ".bashrc"
-assert_eq "separate-home + tag + copy-files → rc 0" "0" "$_rc"
+# ── Chroot command parsing (real script via patched early-exit) ──
 
-run_cmd _check_constraints 0 "" ""
-assert_eq "no options → rc 0" "0" "$_rc"
+section "Chroot command parsing (patched script)"
 
-# ── Default chroot command ──────────────────────────────────
+run_upgrade_parse -- pacman -S vim
+assert_eq "chroot cmd count" "CHROOT_CMD_COUNT=3" "$(echo "$_out" | grep '^CHROOT_CMD_COUNT=')"
+assert_eq "chroot cmd[0]" "CHROOT_CMD_0=pacman" "$(echo "$_out" | grep '^CHROOT_CMD_0=')"
+assert_eq "chroot cmd[1]" "CHROOT_CMD_1=-S" "$(echo "$_out" | grep '^CHROOT_CMD_1=')"
+assert_eq "chroot cmd[2]" "CHROOT_CMD_2=vim" "$(echo "$_out" | grep '^CHROOT_CMD_2=')"
 
-section "Default chroot command"
+run_upgrade_parse -- /usr/bin/pacman -S --needed base-devel git
+assert_eq "multi-arg cmd count" "CHROOT_CMD_COUNT=5" "$(echo "$_out" | grep '^CHROOT_CMD_COUNT=')"
+assert_eq "multi-arg cmd[0]" "CHROOT_CMD_0=/usr/bin/pacman" "$(echo "$_out" | grep '^CHROOT_CMD_0=')"
+assert_eq "multi-arg cmd[2]" "CHROOT_CMD_2=--needed" "$(echo "$_out" | grep '^CHROOT_CMD_2=')"
+assert_eq "multi-arg cmd[4]" "CHROOT_CMD_4=git" "$(echo "$_out" | grep '^CHROOT_CMD_4=')"
 
-_parse_args
-assert_eq "default chroot command count" "0" "${#CHROOT_CMD[@]}"
+# Default chroot command (no -- provided)
+run_upgrade_parse
+assert_eq "default cmd count" "CHROOT_CMD_COUNT=2" "$(echo "$_out" | grep '^CHROOT_CMD_COUNT=')"
+assert_eq "default cmd[0]" "CHROOT_CMD_0=/usr/bin/pacman" "$(echo "$_out" | grep '^CHROOT_CMD_0=')"
+assert_eq "default cmd[1]" "CHROOT_CMD_1=-Syu" "$(echo "$_out" | grep '^CHROOT_CMD_1=')"
 
-# Simulate default assignment
-if [[ ${#CHROOT_CMD[@]} -eq 0 ]]; then
-    CHROOT_CMD=(/usr/bin/pacman -Syu)
-fi
-assert_eq "default chroot command set" "2" "${#CHROOT_CMD[@]}"
-assert_eq "default cmd[0]" "/usr/bin/pacman" "${CHROOT_CMD[0]}"
-assert_eq "default cmd[1]" "-Syu" "${CHROOT_CMD[1]}"
+# ── GEN_ID format validation ────────────────────────────────
 
-# ── Dry-run output simulation ───────────────────────────────
+section "GEN_ID format validation"
 
-section "Dry-run output simulation"
-
-# Verify that dry-run would produce expected output structure
-# without actually running destructive operations.
-
-DRY_RUN=1
-CUSTOM_TAG="pre-test"
-NO_GC=0
-SEPARATE_HOME=1
-COPY_FILES=".bashrc"
-CHROOT_CMD=(/usr/bin/pacman -Syu)
-GEN_ID="20260404-120000-pre-test"
-NEW_SUBVOL="root-${GEN_ID}"
-CURRENT_SUBVOL_RAW="/root-20260403-100000"
-
-_dry_run_output() {
-    echo ":: Current: ${CURRENT_SUBVOL_RAW} → New: /${NEW_SUBVOL}"
-    echo ":: Command: ${CHROOT_CMD[*]}"
-    echo ":: Home: isolated (home-${CUSTOM_TAG})"
-    echo ":: DRY RUN - would create snapshot: ${NEW_SUBVOL}"
-    echo ":: DRY RUN - would create home: home-${CUSTOM_TAG}"
-    echo ":: DRY RUN - chroot command: ${CHROOT_CMD[*]}"
-    echo ":: DRY RUN - available updates:"
-    echo ":: DRY RUN - would create UKI: /efi/EFI/Linux/arch-${GEN_ID}.efi"
-    echo ":: DRY RUN - would run garbage collection"
-    echo ":: DRY RUN complete, no changes made"
-}
-
-_output=$(_dry_run_output)
-assert_contains "dry-run shows current→new" "Current:" "$_output"
-assert_contains "dry-run shows snapshot name" "would create snapshot: root-20260404-120000-pre-test" "$_output"
-assert_contains "dry-run shows home" "would create home: home-pre-test" "$_output"
-assert_contains "dry-run shows UKI path" "would create UKI:" "$_output"
-assert_contains "dry-run shows GC" "would run garbage collection" "$_output"
-assert_contains "dry-run complete" "DRY RUN complete" "$_output"
-
-# ── Dry-run with --no-gc ────────────────────────────────
-
-section "Dry-run with --no-gc"
-
-# Simulate the exact conditional branch from atomic-upgrade
-NO_GC=1
-if [[ "$NO_GC" -eq 0 ]]; then
-    _gc_msg="would run garbage collection"
-else
-    _gc_msg="garbage collection: disabled"
-fi
-assert_eq "NO_GC=1 → disabled message" "garbage collection: disabled" "$_gc_msg"
-
-NO_GC=0
-if [[ "$NO_GC" -eq 0 ]]; then
-    _gc_msg="would run garbage collection"
-else
-    _gc_msg="garbage collection: disabled"
-fi
-assert_eq "NO_GC=0 → enabled message" "would run garbage collection" "$_gc_msg"
-
-# ── GEN_ID generation ───────────────────────────────────────
-
-section "GEN_ID generation"
-
-# Test GEN_ID format with and without custom tag
-_test_gen_id() {
+# Test the exact regex used by the script against various inputs
+_test_gen_id_regex() {
     local gen_id="$1"
     if [[ "$gen_id" =~ ^[0-9]{8}-[0-9]{6}(-[a-zA-Z0-9_-]+)?$ ]]; then
         return 0
@@ -294,19 +210,19 @@ _test_gen_id() {
     fi
 }
 
-run_cmd _test_gen_id "20260404-120000"
+run_cmd _test_gen_id_regex "20260404-120000"
 assert_eq "plain GEN_ID valid" "0" "$_rc"
 
-run_cmd _test_gen_id "20260404-120000-pre-nvidia"
+run_cmd _test_gen_id_regex "20260404-120000-pre-nvidia"
 assert_eq "tagged GEN_ID valid" "0" "$_rc"
 
-run_cmd _test_gen_id "20260404-120000-with_multiple-tags_123"
+run_cmd _test_gen_id_regex "20260404-120000-with_multiple-tags_123"
 assert_eq "complex tagged GEN_ID valid" "0" "$_rc"
 
-run_cmd _test_gen_id "20260404"
+run_cmd _test_gen_id_regex "20260404"
 assert_eq "partial GEN_ID invalid" "1" "$_rc"
 
-run_cmd _test_gen_id "not-a-date"
+run_cmd _test_gen_id_regex "not-a-date"
 assert_eq "non-date GEN_ID invalid" "1" "$_rc"
 
 # ── Subvolume naming ────────────────────────────────────────
@@ -321,7 +237,8 @@ assert_eq "home subvol naming" "home-kde" "home-kde"
 
 section "Cleanup trap logic"
 
-# Test that SNAPSHOT_CREATED=0 prevents rollback
+# Verify the rollback decision logic matches the real cleanup() function:
+# rollback happens iff (exit_code != 0 && SNAPSHOT_CREATED == 1)
 _cleanup_would_rollback() {
     local exit_code="$1"
     local snapshot_created="$2"
@@ -342,5 +259,37 @@ assert_eq "failure + snapshot created → rollback" "WOULD_ROLLBACK" "$(_cleanup
 assert_eq "failure + snapshot created + home → rollback + home" "WOULD_ROLLBACK
 WOULD_DELETE_HOME" "$(_cleanup_would_rollback 1 1 1)"
 assert_eq "failure + snapshot NOT created → no rollback" "NO_ROLLBACK" "$(_cleanup_would_rollback 1 0 0)"
+
+# ── Dry-run output: verify the output block exists in the real script ──
+
+section "Dry-run output: verify output block in real script"
+
+# We verify the dry-run block in the actual atomic-upgrade script by
+# grepping for its key output strings and conditional structures.
+# Full integration testing of --dry-run requires a real Btrfs system.
+
+_script_content=$(cat "$SCRIPT")
+
+# Output strings that must be present in the dry-run block
+assert_contains "has 'Current -> New' line" "Current:" "$_script_content"
+assert_contains "has snapshot message" "DRY RUN - would create snapshot" "$_script_content"
+assert_contains "has UKI path message" "DRY RUN - would create UKI" "$_script_content"
+assert_contains "has chroot command message" "DRY RUN - chroot command" "$_script_content"
+assert_contains "has GC enabled message" "DRY RUN - would run garbage collection" "$_script_content"
+assert_contains "has GC disabled message" "DRY RUN - garbage collection: disabled" "$_script_content"
+assert_contains "has complete message" "DRY RUN complete, no changes made" "$_script_content"
+assert_contains "has available updates message" "DRY RUN - available updates" "$_script_content"
+assert_contains "has signing disabled message" "DRY RUN - sbctl signing: disabled" "$_script_content"
+assert_contains "has signing enabled message" "DRY RUN - would sign UKI with sbctl" "$_script_content"
+assert_contains "has home isolated message" "Home: isolated" "$_script_content"
+assert_contains "has create home message" "DRY RUN - would create home" "$_script_content"
+assert_contains "has use existing home message" "DRY RUN - would use existing home" "$_script_content"
+
+# Conditional structures that control branching
+assert_contains "has NO_GC conditional" '"$NO_GC" -eq 0' "$_script_content"
+assert_contains "has pacman -Syu check" '"/usr/bin/pacman -Syu"' "$_script_content"
+assert_contains "has SBCTL_SIGN check" '"$SBCTL_SIGN" -eq 1' "$_script_content"
+assert_contains "has SEPARATE_HOME check" 'SEPARATE_HOME -eq 1' "$_script_content"
+assert_contains "has home dir existence check" 'home-${CUSTOM_TAG}' "$_script_content"
 
 summary
