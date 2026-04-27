@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rpPH4kQocMjkm2Ve/atomic-upgrade/actions/workflows/ci.yml/badge.svg)](https://github.com/rpPH4kQocMjkm2Ve/atomic-upgrade/actions/workflows/ci.yml)
 ![License](https://img.shields.io/github/license/rpPH4kQocMjkm2Ve/atomic-upgrade)
-[![Spec](https://img.shields.io/endpoint?url=https://gitlab.com/fkzys/specs/-/raw/main/version.json&maxAge=300)](https://gitlab.com/fkzys/specs)
+[![Spec](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/fkzys/specs/refs/heads/main/version.json&maxAge=300)](https://github.com/fkzys/specs)
 
 Atomic system upgrades for Arch Linux on Btrfs + UKI + optional Secure Boot.
 
@@ -68,7 +68,7 @@ gitpkg install atomic-upgrade
 ### Manual
 
 ```bash
-git clone https://gitlab.com/fkzys/atomic-upgrade.git
+git clone https://github.com/fkzys/atomic-upgrade.git
 cd atomic-upgrade
 sudo make install
 ```
@@ -386,7 +386,7 @@ The tool places `.efi` files into `ESP/EFI/Linux/` (signed or unsigned depending
 ### Dependencies
 
 Installed automatically via the AUR package:
-- [`verify-lib`](https://gitlab.com/fkzys/verify-lib) — validates shell libraries before sourcing (compiled C binary)
+- [`verify-lib`](https://github.com/fkzys/verify-lib) — validates shell libraries before sourcing (compiled C binary)
 - `btrfs-progs`
 - `systemd-ukify`
 - `python` ≥ 3.10
