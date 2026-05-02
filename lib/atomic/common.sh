@@ -12,7 +12,7 @@ fi
 
 # ── Project version ────────────────────────────────────────────────
 
-VERSION="0.2.0"
+VERSION="0.2.1"
 
 # ── Defaults (overridable via /etc/atomic.conf) ─────────────────────
 BTRFS_MOUNT="/run/atomic/temp_root"
