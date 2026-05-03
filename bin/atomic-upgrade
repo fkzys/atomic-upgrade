@@ -8,7 +8,10 @@
 set -euo pipefail
 
 readonly LIBDIR="/usr/lib/atomic"
-_src() { local p; p=$(verify-lib "$1" "$LIBDIR/") && source "$p" || exit 1; }
+
+_src() {
+    local p; p=$(verify-lib "$1" "$LIBDIR/") && source "$p" || exit 1
+}
 
 # Source common.sh early for VERSION (skip auto-init for fast --help/--version)
 _ATOMIC_NO_INIT=1
@@ -107,17 +110,25 @@ if [[ -n "$CUSTOM_TAG" ]]; then
 fi
 
 # Default chroot command: use CHROOT_COMMAND from config (or default in common.sh).
-# Note: CHROOT_COMMAND uses simple word splitting; args with spaces inside
-# are not supported (same limitation as HOME_COPY_FILES).
 if [[ ${#CHROOT_CMD[@]} -eq 0 ]]; then
     [[ -z "${CHROOT_COMMAND:-}" ]] && CHROOT_COMMAND="/usr/bin/pacman -Syu"
-    read -ra CHROOT_CMD <<< "$CHROOT_COMMAND"
-fi
+    CHROOT_CMD=()
+    # Capture null-delimited output via temp file to reliably detect failures.
+    # Use _ATOMIC_LIB_DIR if available (set by common.sh), else fall back to LIBDIR.
+    _tmp_array=$(mktemp)
+    _cfg_py="${_ATOMIC_LIB_DIR:-${LIBDIR}}/config.py"
+    if CONFIG_FILE="${CONFIG_FILE:-/etc/atomic.conf}" python3 "${_cfg_py}" array CHROOT_COMMAND > "$_tmp_array" 2>/dev/null; then
+        while IFS= read -r -d '' token; do
+            CHROOT_CMD+=("$token")
+        done < "$_tmp_array"
+    else
+        echo "WARN: config.py failed, falling back to word-split" >&2
+    fi
+    rm -f "$_tmp_array"
 
-# Warn if CHROOT_COMMAND contains quotes (word splitting doesn't process them)
-if [[ "$CHROOT_COMMAND" =~ [\'\"] ]]; then
-    echo "WARN: CHROOT_COMMAND contains quotes, but word splitting doesn't process them." >&2
-    echo "WARN: Use CLI instead: atomic-upgrade -- pacman -S 'nvidia dkms'" >&2
+    if [[ ${#CHROOT_CMD[@]} -eq 0 ]]; then
+        read -ra CHROOT_CMD <<< "$CHROOT_COMMAND"
+    fi
 fi
 
 # Verify required variables are set
@@ -166,6 +177,7 @@ cleanup() {
 
     mountpoint -q "$BTRFS_MOUNT" 2>/dev/null && umount "$BTRFS_MOUNT"
     [[ -n "${LOCK_FD:-}" ]] && exec {LOCK_FD}>&- 2>/dev/null
+    [[ -n "${_tmp_array:-}" ]] && rm -f "$_tmp_array" 2>/dev/null
 
     return $exit_code
 }
