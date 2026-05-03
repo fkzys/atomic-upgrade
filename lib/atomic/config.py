@@ -3,7 +3,8 @@
 /usr/lib/atomic/config.py
 
 Parse /etc/atomic.conf with proper shell-style quote handling.
-Uses shlex for correct parsing of single/double quotes and escapes.
+Strips outer quotes (single/double) and handles inline comments.
+Uses shlex only in config_to_array() for safe tokenization.
 
 Usage:
   config.py                    -> dump all config as JSON
@@ -35,7 +36,11 @@ ALLOWED_KEYS = set(DEFAULT_CONFIG.keys())
 
 
 def parse_config(path=None):
-    """Parse atomic.conf with proper quote handling via shlex."""
+    """Parse atomic.conf with proper quote handling.
+
+    Strips outer quotes (single/double) and handles inline comments.
+    Uses shlex only in config_to_array() for safe tokenization.
+    """
     config = dict(DEFAULT_CONFIG)
     if path is None:
         path = os.environ.get("CONFIG_FILE", "/etc/atomic.conf")
@@ -44,11 +49,13 @@ def parse_config(path=None):
         return config
 
     # Only check owner for /etc/atomic.conf (system config).
+    # Resolve symlinks so that CONFIG_FILE set to a symlink pointing
+    # to /etc/atomic.conf is still correctly validated.
     # Other paths (e.g. test configs) are allowed to have any owner.
-    if path == "/etc/atomic.conf":
+    if config_path.resolve() == Path("/etc/atomic.conf"):
         try:
-            if config_path.stat().st_uid != 0:
-                print(f"ERROR: {path} not owned by root", file=sys.stderr)
+            if config_path.resolve().stat().st_uid != 0:
+                print(f"ERROR: {config_path.resolve()} not owned by root", file=sys.stderr)
                 sys.exit(1)
         except OSError as e:
             print(f"ERROR: Cannot read {path}: {e}", file=sys.stderr)

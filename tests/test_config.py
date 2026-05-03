@@ -125,17 +125,27 @@ class TestParseConfig:
         finally:
             os.unlink(config_path)
 
+    @pytest.mark.skipif(os.geteuid() != 0, reason="requires root")
     def test_config_not_owned_by_root(self):
-        config_path = create_temp_config("ESP=/efi\n")
-        run_config.config_path = config_path
+        # Ownership check only triggers for /etc/atomic.conf.
+        # Back up existing file, write test config, restore after.
+        real_path = Path("/etc/atomic.conf")
+        backup = None
+        if real_path.exists():
+            backup = real_path.read_text()
         try:
-            if os.geteuid() == 0:
-                os.chown(config_path, 1000, -1)
-                code, stdout, stderr = run_config("dump")
-                assert code == 1
-                assert "not owned by root" in stderr
+            real_path.write_text("ESP=/efi\n")
+            os.chown(str(real_path), 1000, -1)
+            run_config.config_path = str(real_path)
+            code, stdout, stderr = run_config("dump")
+            assert code == 1
+            assert "not owned by root" in stderr
         finally:
-            os.unlink(config_path)
+            if backup is not None:
+                real_path.write_text(backup)
+                os.chown(str(real_path), 0, 0)
+            elif real_path.exists():
+                real_path.unlink()
 
 
 class TestKeyLookup:
@@ -181,7 +191,7 @@ class TestShellOutput:
             code, stdout, stderr = run_config("shell")
             assert code == 0
             lines = stdout.split("\n")
-            cmd_line = [l for l in lines if l.startswith("CHROOT_COMMAND=")][0]
+            cmd_line = [line for line in lines if line.startswith("CHROOT_COMMAND=")][0]
             assert "package with spaces" in cmd_line
         finally:
             os.unlink(config_path)
