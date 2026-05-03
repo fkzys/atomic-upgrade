@@ -229,13 +229,15 @@ fi
 make_mock findmnt    'echo ""'
 make_mock mountpoint 'exit 0'
 REAL_PYTHON3=$(command -v python3)
-cat > "${MOCK_BIN}/python3" <<MOCK
+cat > "${MOCK_BIN}/python3" <<'MOCK'
 #!/bin/bash
 for arg in "$@"; do
-    [[ "$arg" == *config.py* ]] && exec ${REAL_PYTHON3} "$@"
+    [[ "$arg" == *config.py* ]] && exec REAL_PYTHON3_PLACEHOLDER "$@"
 done
 exit 0
 MOCK
+sed -i "s|REAL_PYTHON3_PLACEHOLDER|${REAL_PYTHON3}|g" "${MOCK_BIN}/python3"
+chmod +x "${MOCK_BIN}/python3"
 make_mock mount      'exit 0'
 make_mock btrfs      'exit 0'
 make_mock flock      'exit 0'
