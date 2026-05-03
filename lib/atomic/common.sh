@@ -40,7 +40,7 @@ load_config() {
     [[ -f "$CONFIG_FILE" ]] || return 0
 
     local shell_output config_err
-    shell_output=$(python3 "${LIBDIR}/config.py" shell 2>&1) || {
+    shell_output=$(CONFIG_FILE="${CONFIG_FILE}" python3 "${LIBDIR}/config.py" shell 2>&1) || {
         config_err="$shell_output"
         echo "ERROR: Failed to parse config with config.py" >&2
         echo "ERROR: Details: $config_err" >&2
