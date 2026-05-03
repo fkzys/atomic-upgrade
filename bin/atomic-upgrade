@@ -177,6 +177,7 @@ cleanup() {
 
     mountpoint -q "$BTRFS_MOUNT" 2>/dev/null && umount "$BTRFS_MOUNT"
     [[ -n "${LOCK_FD:-}" ]] && exec {LOCK_FD}>&- 2>/dev/null
+    [[ -n "${_tmp_array:-}" ]] && rm -f "$_tmp_array" 2>/dev/null
 
     return $exit_code
 }
