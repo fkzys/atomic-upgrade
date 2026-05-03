@@ -1,4 +1,7 @@
-v: 0.1
+v: 0.2
+
+---
+0:
 
 A common fact that internet is dead. Only search crawlers (bots) and a plenty of inactive users is here (maybe).
 
@@ -9,6 +12,7 @@ Here i will explain why this project is even needed, why it came to be, and what
 This doc was written because i don't like publishing anywhere (and there's no point if the internet is dead), and also i like keeping this kind of documentation in the code repository.
 
 ---
+1:
 
 Let's start with an introduction. Some background, i mean.
 
@@ -41,6 +45,30 @@ This entity is managed by the main orchestrator and subprograms.
 The entity manages the root layer. i don't use the "@" naming convention, because i find it misleading and hard for people to understand.
 The home subvolume layer, or other subvolumes, are not managed by the "atomic-upgrade" entity (except for tagged subvolumes with a special flag for experiments, but that functionality appeared later).
 
+---
+2:
+
+The current open source state reminds me of the literature situation in the 18th century (and some of the 21st). More concrete:
+Writers fell into two, no, even three types:
+1. They wrote, were unknown to anyone, died either poor or just unknown. Their works were either shit or not shit – doesn’t matter. The point is they remained unknown after death.
+2. They wrote, were known during their lifetime, sometimes even made money from it. The smallest group.
+3. They wrote, were needed by nobody, became known posthumously.
+
+So, the software situation now is similar.
+
+Back in the day, only a thin layer of people could write literature because literacy wasn’t widespread.
+Later, literacy became universal, but the amount of good literature didn’t increase because of that.
+
+With software, it’s alike.
+Earlier, software could be written by a narrow slice of people who, somehow, learned some language and wrote code in it.
+Now you don’t need to learn a language, you need to understand architecture and what the product should do.
+Did this result in more good software? i don’t know.
+But i know that most software, regardless of its quality, remains unpopular and unneeded by anyone.
+
+The question is – will some software become popular after the creator’s death/after the author abandons the software?
+Depends on the software, i guess.
+Some code tends to become obsolete because some code relies on other code (people call such things frameworks and libraries).
+Some doesn’t have that property.
 
 This document will be expanded (maybe).
 
