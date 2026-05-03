@@ -1,4 +1,4 @@
-v: 0.2
+v: 0.3
 
 ---
 0:
@@ -69,6 +69,14 @@ The question is – will some software become popular after the creator’s deat
 Depends on the software, i guess.
 Some code tends to become obsolete because some code relies on other code (people call such things frameworks and libraries).
 Some doesn’t have that property.
+
+---
+3:
+
+Btw, i understand something:
+1. Humans don't read code
+2. Humans don't read documentation
+3. Humans don't even open readme
 
 This document will be expanded (maybe).
 
