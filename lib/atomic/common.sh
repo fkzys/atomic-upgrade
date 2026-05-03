@@ -4,11 +4,7 @@
 # Shared functions and configuration for the atomic-upgrade system.
 # Sourced by: atomic-upgrade, atomic-gc, atomic-rebuild-uki, atomic-guard
 
-# ── Library directory ──────────────────────────────────────────────
-
-if [[ -z "${LIBDIR:-}" ]]; then
-    LIBDIR="/usr/lib/atomic"
-fi
+_ATOMIC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Project version ────────────────────────────────────────────────
 
@@ -32,62 +28,25 @@ KERNEL_PARAMS="rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsysc
 # Default chroot command (overridden by config or CLI -- CHROOT_COMMAND...)
 CHROOT_COMMAND="/usr/bin/pacman -Syu"
 
-# ── Config loading (safe parser, no arbitrary code execution) ───────
+# ── Config loading (delegates to Python for proper quote handling) ───────
 
 CONFIG_FILE="${CONFIG_FILE:-/etc/atomic.conf}"
 
 load_config() {
     [[ -f "$CONFIG_FILE" ]] || return 0
 
-    # Refuse to load config not owned by root
-    local owner
-    owner=$(stat -c %u "$CONFIG_FILE" 2>/dev/null)
-    if [[ "$owner" != "0" ]]; then
-        echo "ERROR: $CONFIG_FILE not owned by root (owner uid: $owner)" >&2
+    local shell_output config_err
+    if ! shell_output=$(CONFIG_FILE="${CONFIG_FILE}" python3 "${_ATOMIC_LIB_DIR}/config.py" shell 2>/dev/null); then
+        config_err=$(CONFIG_FILE="${CONFIG_FILE}" python3 "${_ATOMIC_LIB_DIR}/config.py" shell 2>&1) || true
+        echo "ERROR: Failed to parse config with config.py" >&2
+        echo "ERROR: Details: ${config_err:-unknown}" >&2
         return 1
     fi
 
-    # Whitelist of allowed config keys
-    local -a allowed=(BTRFS_MOUNT NEW_ROOT ESP KEEP_GENERATIONS MAPPER_NAME KERNEL_PARAMS KERNEL_PKG CHROOT_COMMAND SBCTL_SIGN UPGRADE_GUARD HOME_COPY_FILES)
-
     while IFS='=' read -r key value; do
-        # Strip leading/trailing whitespace from key
-        key="${key#"${key%%[![:space:]]*}"}"
-        key="${key%"${key##*[![:space:]]}"}"
-        # Trim leading/trailing whitespace from value
-        value="${value#"${value%%[![:space:]]*}"}"
-        value="${value%"${value##*[![:space:]]}"}"
-
-        # Strip inline comments: everything after ' #' (space-hash).
-        # Limitation: values containing literal ' #' are truncated.
-        # Quoted values do not protect against this.  For kernel params
-        # and paths used in this config, this is not a practical concern.
-        value="${value%% #*}"
-        value="${value%"${value##*[![:space:]]}"}"
-
-        # Skip comments and blank lines
-        [[ "$key" =~ ^#.*$ || -z "$key" ]] && continue
-
-        # Check against whitelist
-        local valid=0
-        for a in "${allowed[@]}"; do
-            if [[ "$key" == "$a" ]]; then
-                valid=1
-                break
-            fi
-        done
-
-        if [[ $valid -eq 1 ]]; then
-            # Strip surrounding quotes (single or double)
-            value="${value#\"}"
-            value="${value%\"}"
-            value="${value#\'}"
-            value="${value%\'}"
-            printf -v "$key" '%s' "$value"
-        else
-            echo "WARN: Unknown config key ignored: $key" >&2
-        fi
-    done < "$CONFIG_FILE"
+        [[ -z "$key" || "$key" == \#* ]] && continue
+        printf -v "$key" '%s' "$value"
+    done <<< "$shell_output"
 }
 
 # ── Auto-initialization ──────────────────────────────────────────────
@@ -132,7 +91,7 @@ check_dependencies() {
     local root_type
     root_type=$(python3 -c "
 import json, importlib.util, sys
-spec = importlib.util.spec_from_file_location('rootdev', '${LIBDIR}/rootdev.py')
+spec = importlib.util.spec_from_file_location('rootdev', '${_ATOMIC_LIB_DIR}/rootdev.py')
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 try:
@@ -150,7 +109,7 @@ except Exception:
         return 1
     fi
     # Verify python helper modules exist
-    for helper in "${LIBDIR}/fstab.py" "${LIBDIR}/rootdev.py"; do
+    for helper in "${_ATOMIC_LIB_DIR}/fstab.py" "${_ATOMIC_LIB_DIR}/rootdev.py"; do
         [[ -f "$helper" ]] || {
             echo "ERROR: Missing helper: $helper" >&2
             return 1
@@ -280,7 +239,7 @@ verify_uki() {
 # ── fstab update (delegates to Python for safety) ──────────────────
 
 update_fstab() {
-    python3 "${LIBDIR}/fstab.py" "$@"
+    python3 "${_ATOMIC_LIB_DIR}/fstab.py" "$@"
 }
 
 # ── fstab /home update ──────────────────────────────────────────
@@ -288,7 +247,7 @@ update_fstab() {
 # Args: $1 = fstab path, $2 = new home subvolume name
 
 update_fstab_home() {
-    python3 "${LIBDIR}/fstab.py" home "$@"
+    python3 "${_ATOMIC_LIB_DIR}/fstab.py" home "$@"
 }
 
 # ── Home skeleton population ────────────────────────────────────
@@ -394,7 +353,7 @@ get_root_device() {
     fi
 
     local dev
-    dev=$(python3 "${LIBDIR}/rootdev.py" device 2>/dev/null)
+    dev=$(python3 "${_ATOMIC_LIB_DIR}/rootdev.py" device 2>/dev/null)
     if [[ -n "$dev" && -e "$dev" ]]; then
         _ROOT_DEVICE="$dev"
         echo "$dev"
@@ -572,7 +531,7 @@ build_uki() {
     fi
 
     local root_cmdline
-    root_cmdline=$(python3 "${LIBDIR}/rootdev.py" cmdline "$new_subvol") || {
+    root_cmdline=$(python3 "${_ATOMIC_LIB_DIR}/rootdev.py" cmdline "$new_subvol") || {
         echo "ERROR: Cannot detect root device for cmdline" >&2
         return 1
     }
