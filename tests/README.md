@@ -4,7 +4,7 @@
 
 | File | Language | Framework | What it tests |
 |------|----------|-----------|---------------|
-| `test_config.sh` | Bash | Custom assertions | Config loading, parsing, quoting, inline comments, ownership check, unknown key rejection, whitelist security, UPGRADE_GUARD, KERNEL_PARAMS, HOME_COPY_FILES, key whitespace trimming |
+| `test_config.py` | Python | pytest | `config.py` — parse_config (quoting, inline comments, unknown keys, ownership), key lookup, validate, shell output (format + escaping), array output (simple + quoted spaces) |
 | `test_validate.sh` | Bash | Custom assertions | Function definitions, `validate_config` (numeric checks, path conflicts, ESP mount), `check_dependencies` (missing commands, LUKS→cryptsetup, SBCTL_SIGN→sbctl), `is_child_of_aur_helper` |
 | `test_device.sh` | Bash | Custom assertions | `get_current_subvol`/`get_current_subvol_raw` with various findmnt outputs, `get_root_device` (python helper, caching, fallback), `ensure_btrfs_mounted`, `validate_subvolume` |
 | `test_space.sh` | Bash | Custom assertions | `check_esp_space` (sufficient/low/df-failure), `check_btrfs_space` (native/df-fallback/both-fail, absolute minimum threshold, non-numeric btrfs output) |
@@ -27,7 +27,7 @@
 make test
 
 # Individual suites
-bash tests/test_config.sh
+python -m pytest tests/test_config.py -v
 bash tests/test_validate.sh
 bash tests/test_device.sh
 bash tests/test_space.sh
@@ -44,7 +44,7 @@ python -m pytest tests/test_rootdev.py -v
 
 ## How they work
 
-### Bash unit tests (`test_config.sh` .. `test_rebuild_uki.sh`)
+### Bash unit tests (`test_validate.sh` .. `test_rebuild_uki.sh`)
 
 All unit test files source `test_harness.sh`, which provides:
 
