@@ -193,3 +193,7 @@ Optional:
 - `cryptsetup`
 - `lvm2`
 - `bash-completion`
+
+## License
+
+AGPL-3.0-or-later
