@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
-# tests/test_upgrade_flow.sh — Integration tests for the main upgrade execution flow
+# Integration tests for the main upgrade execution flow
 # Covers snapshot creation, home isolation, chroot, UKI build, cleanup, dry-run
 # Run: bash tests/test_upgrade_flow.sh
+#
+# Copyright (C) 2026 fkzys <fkzys@proton.me>
+#                    https://github.com/fkzys/atomic-upgrade
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 source "$(dirname "${BASH_SOURCE[0]}")/test_harness.sh"
 
@@ -136,7 +144,7 @@ chmod +x "$_TEST_SCRIPT"
 _run_upgrade() {
     # Clean previous UKI files
     rm -f "${_FAKE_ESP}/EFI/Linux/arch-"*.efi 2>/dev/null || true
-    
+
     run_cmd env \
         _TEST_ESP="$_FAKE_ESP" \
         _TEST_BTRFS="$_FAKE_BTRFS" \

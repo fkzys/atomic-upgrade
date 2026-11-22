@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# tests/test_harness.sh
-#
 # Shared test harness for common.sh unit tests.
 # Sourced by individual test files — NOT run directly.
 #
@@ -12,6 +10,14 @@
 #   - make_mock / make_mock_in utilities
 #   - Mock call tracking (mock_call_count, mock_last_args, mock_clear_log)
 #   - Sources common.sh with _ATOMIC_NO_INIT=1
+#
+# Copyright (C) 2026 fkzys <fkzys@proton.me>
+#                    https://github.com/fkzys/atomic-upgrade
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 set -uo pipefail
 

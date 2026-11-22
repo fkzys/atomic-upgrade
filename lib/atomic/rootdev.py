@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 """
-/usr/lib/atomic/rootdev.py
-
 Auto-detect root device type and build kernel cmdline.
 Eliminates hardcoded LUKS assumptions — works with plain btrfs,
 LUKS, LVM, or combinations.
 
 Usage:
-  rootdev.py detect          → JSON with root device info
-  rootdev.py cmdline SUBVOL  → kernel cmdline fragment (without extra params)
+  rootdev.py detect          -> JSON with root device info
+  rootdev.py cmdline SUBVOL  -> kernel cmdline fragment (without extra params)
 
 Exit codes:
   0 — success
   1 — detection failed
+
+ Copyright (C) 2026 fkzys <fkzys@proton.me>
+                    https://github.com/fkzys/atomic-upgrade
+
+ SPDX-License-Identifier: AGPL-3.0-or-later
+
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import json

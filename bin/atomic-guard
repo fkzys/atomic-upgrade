@@ -1,11 +1,18 @@
-#!/bin/bash
-# /usr/bin/atomic-guard
+#!/usr/bin/env bash
 #
 # Pacman hook guard: blocks direct system upgrades.
 # Allows upgrades only when called from atomic-upgrade (via env + lock)
 # or from AUR helpers (yay, paru, etc.) which invoke pacman themselves.
 # Note: no "set -euo pipefail" here — the script relies on conditional
 # checks and process-tree walking that would break with errexit.
+#
+# Copyright (C) 2026 fkzys <fkzys@proton.me>
+#                    https://github.com/fkzys/atomic-upgrade
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 readonly LIBDIR="/usr/lib/atomic"
 
@@ -37,7 +44,6 @@ if [[ "${ATOMIC_UPGRADE:-}" == "1" ]]; then
     exit 0
 fi
 
-# ── Sysupgrade detection ────────────────────────────────────────
 is_sysupgrade() {
     local pid=$$
     while [[ $pid -ne 1 ]]; do

@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
-# tests/test_rebuild_uki_flow.sh — Integration tests for bin/atomic-rebuild-uki
+# Integration tests for bin/atomic-rebuild-uki
 # Covers --list, overwrite prompt, mount/build/sign/unmount flow, cleanup
 # Run: bash tests/test_rebuild_uki_flow.sh
+#
+# Copyright (C) 2026 fkzys <fkzys@proton.me>
+#                    https://github.com/fkzys/atomic-upgrade
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 source "$(dirname "${BASH_SOURCE[0]}")/test_harness.sh"
 

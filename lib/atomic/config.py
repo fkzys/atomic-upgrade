@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 """
-/usr/lib/atomic/config.py
-
 Parse /etc/atomic.conf with proper shell-style quote handling.
 Strips outer quotes (single/double) and handles inline comments.
 Uses shlex only in config_to_array() for safe tokenization.
 
 Usage:
-  config.py                    -> dump all config as JSON
+  config.py                     -> dump all config as JSON
   config.py KEY                 -> print value of KEY
   config.py validate            -> validate config, exit 0/1
+
+
+ Copyright (C) 2026 fkzys <fkzys@proton.me>
+                    https://github.com/fkzys/atomic-upgrade
+
+ SPDX-License-Identifier: AGPL-3.0-or-later
+
+ You should have received a copy of the GNU Affero General Public License
+ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import json

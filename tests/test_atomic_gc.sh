@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
-# tests/test_atomic_gc.sh — Tests for bin/atomic-gc script
+# Tests for bin/atomic-gc script
 # Run: bash tests/test_atomic_gc.sh
+#
+# Copyright (C) 2026 fkzys <fkzys@proton.me>
+#                    https://github.com/fkzys/atomic-upgrade
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 source "$(dirname "${BASH_SOURCE[0]}")/test_harness.sh"
 

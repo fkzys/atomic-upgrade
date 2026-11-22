@@ -1,16 +1,21 @@
-#!/bin/bash
-# /usr/lib/atomic/common.sh
+#!/usr/bin/env bash
 #
 # Shared functions and configuration for the atomic-upgrade system.
 # Sourced by: atomic-upgrade, atomic-gc, atomic-rebuild-uki, atomic-guard
+#
+# Copyright (C) 2026 fkzys <fkzys@proton.me>
+#                    https://github.com/fkzys/atomic-upgrade
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 _ATOMIC_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── Project version ────────────────────────────────────────────────
-
 VERSION="0.2.2"
 
-# ── Defaults (overridable via /etc/atomic.conf) ─────────────────────
+# Overridable via /etc/atomic.conf
 BTRFS_MOUNT="/run/atomic/temp_root"
 NEW_ROOT="/run/atomic/newroot"
 ESP="/efi"
@@ -21,15 +26,13 @@ LOCK_DIR="/run/atomic"
 LOCK_FILE="${LOCK_FILE:-${LOCK_DIR}/atomic-upgrade.lock}"
 SBCTL_SIGN=0
 UPGRADE_GUARD=1
-# Files to copy from /home/<user>/ into isolated homes (space-separated)
+# Files to copy, space-separated
 HOME_COPY_FILES=""
-# Kernel security parameters
 KERNEL_PARAMS="rw slab_nomerge init_on_alloc=1 page_alloc.shuffle=1 pti=on vsyscall=none randomize_kstack_offset=on debugfs=off"
-# Default chroot command (overridden by config or CLI -- CHROOT_COMMAND...)
+# Overridden by config or CLI -- CHROOT_COMMAND...
 CHROOT_COMMAND="/usr/bin/pacman -Syu"
 
-# ── Config loading (delegates to Python for proper quote handling) ───────
-
+# Delegates to Python for proper quote handling
 CONFIG_FILE="${CONFIG_FILE:-/etc/atomic.conf}"
 
 load_config() {
@@ -49,15 +52,11 @@ load_config() {
     done <<< "$shell_output"
 }
 
-# ── Auto-initialization ──────────────────────────────────────────────
-# Skipped when _ATOMIC_NO_INIT is set (e.g. in test harnesses that
+# Auto-initialization is skipped when _ATOMIC_NO_INIT is set (e.g. in test harnesses that
 # source common.sh only for function definitions and defaults).
-
 if [[ -z "${_ATOMIC_NO_INIT:-}" ]]; then
     load_config
 fi
-
-# ── Validation ──────────────────────────────────────────────────────
 
 validate_config() {
     if ! mountpoint -q "$ESP" 2>/dev/null; then
@@ -75,8 +74,6 @@ validate_config() {
     fi
     return 0
 }
-
-# ── Dependency check ────────────────────────────────────────────────
 
 check_dependencies() {
     local missing=()
@@ -117,8 +114,7 @@ except Exception:
     done
 }
 
-# ── Chroot unmount helper (module-level, called by chroot_snapshot) ──
-
+# Chroot unmount helper; module-level, called by chroot_snapshot
 _chroot_umount() {
     local root="$1"
     umount "${root}${LOCK_DIR}" 2>/dev/null
@@ -130,8 +126,6 @@ _chroot_umount() {
     umount "${root}/sys/firmware/efi/efivars" 2>/dev/null
     umount "${root}/sys" 2>/dev/null
 }
-
-# ── Snapshot chroot (replaces arch-chroot dependency) ────────────
 
 chroot_snapshot() {
     local root="$1"; shift
@@ -151,13 +145,11 @@ chroot_snapshot() {
     mount -t tmpfs tmp "${root}/tmp" \
         -o mode=1777,strictatime,nodev,nosuid || { _chroot_umount "$root"; return 1; }
 
-    # Expose host lock directory for atomic-guard verification
     if [[ -d "${LOCK_DIR}" ]]; then
         mkdir -p "${root}${LOCK_DIR}"
         mount --bind "${LOCK_DIR}" "${root}${LOCK_DIR}" || true
     fi
 
-    # DNS — handle symlinks
     local resolv_target="${root}/etc/resolv.conf"
     if [[ -e /etc/resolv.conf ]]; then
         if [[ -L "$resolv_target" ]]; then
@@ -188,8 +180,6 @@ chroot_snapshot() {
     return $rc
 }
 
-# ── Locking ─────────────────────────────────────────────────────────
-
 acquire_lock() {
     [[ -d "$LOCK_DIR" ]] || mkdir -p "$LOCK_DIR"
 
@@ -200,8 +190,6 @@ acquire_lock() {
     fi
     export LOCK_FD
 }
-
-# ── AUR helper detection ────────────────────────────────────────
 
 is_child_of_aur_helper() {
     local pid=$$
@@ -215,8 +203,6 @@ is_child_of_aur_helper() {
     done
     return 1
 }
-
-# ── Secure Boot signing helpers ──────────────────────────────────
 
 sign_uki() {
     local uki_path="$1"
@@ -236,22 +222,17 @@ verify_uki() {
     fi
 }
 
-# ── fstab update (delegates to Python for safety) ──────────────────
-
 update_fstab() {
     python3 "${_ATOMIC_LIB_DIR}/fstab.py" "$@"
 }
 
-# ── fstab /home update ──────────────────────────────────────────
 # Updates the /home mount entry's subvol= to point to a new subvolume.
 # Args: $1 = fstab path, $2 = new home subvolume name
-
 update_fstab_home() {
     python3 "${_ATOMIC_LIB_DIR}/fstab.py" home "$@"
 }
 
-# ── Home skeleton population ────────────────────────────────────
-# Creates user directories in a new home subvolume with correct
+# Home skeleton population creates user directories in a new home subvolume with correct
 # ownership/permissions. Optionally copies specific files.
 #
 # Args:
@@ -326,27 +307,23 @@ populate_home_skeleton() {
     fi
 }
 
-# ── Root device detection ───────────────────────────────────────────
-
-# get_current_subvol: returns subvolume name without leading slash
+# Returns subvolume name without leading slash
 get_current_subvol() {
     local raw
     raw=$(get_current_subvol_raw)
     echo "${raw#/}"
 }
 
-# get_current_subvol_raw: returns subvolume as reported by findmnt
-# Uses sed instead of grep -P for portability
+# Returns subvolume as reported by findmnt
+# Use sed for portability
 get_current_subvol_raw() {
     findmnt -n -o OPTIONS / | sed -n 's/.*subvol=\([^,]*\).*/\1/p' | head -1
 }
 
-# ── Root block device ────────────────────────────────────────────
-
 _ROOT_DEVICE=""
 
 get_root_device() {
-    # Cache: python3 startup ~30ms, may be called multiple times
+    # Cache, may be called multiple times
     if [[ -n "$_ROOT_DEVICE" ]]; then
         echo "$_ROOT_DEVICE"
         return 0
@@ -370,8 +347,6 @@ get_root_device() {
     echo "ERROR: Cannot detect root block device" >&2
     return 1
 }
-
-# ── Btrfs mount helpers ────────────────────────────────────────────
 
 ensure_btrfs_mounted() {
     mkdir -p "$BTRFS_MOUNT" || return 1
@@ -398,8 +373,6 @@ validate_subvolume() {
     [[ -d "${mount}/${subvol}" ]] || return 1
     btrfs subvolume show "${mount}/${subvol}" &>/dev/null
 }
-
-# ── Space checks ───────────────────────────────────────────────────
 
 check_btrfs_space() {
     local mount_point="$1"
@@ -466,8 +439,6 @@ check_esp_space() {
     echo "   ESP space: ${avail_mb}MB free"
 }
 
-# ── Generation listing ──────────────────────────────────────────────
-
 list_generations() {
     local -a gens=()
     local f
@@ -493,15 +464,13 @@ list_generations() {
     printf '%s\n' "${gens[@]}" | sort -r
 }
 
-# ── UKI build cleanup helper (module-level, called by build_uki) ──
-
+# Cleanup helper; module-level, called by build_uki
 _build_uki_cleanup() {
     local os_release_tmp="$1"
     [[ -n "$os_release_tmp" ]] && rm -f "$os_release_tmp"
 }
 
-# ── UKI build (uses rootdev.py for cmdline auto-detection) ──────────
-
+# Uses rootdev.py for cmdline auto-detection
 build_uki() {
     local gen_id="$1" new_root="$2" new_subvol="$3"
     local uki_path="${ESP}/EFI/Linux/arch-${gen_id}.efi"
@@ -578,8 +547,6 @@ build_uki() {
     _build_uki_cleanup "$os_release_tmp"
     echo "$uki_path"
 }
-
-# ── Garbage collection ──────────────────────────────────────────────
 
 garbage_collect() {
     local keep="${1:-$KEEP_GENERATIONS}"
@@ -680,7 +647,7 @@ garbage_collect() {
             fi
         done
 
-        # Orphan home subvolumes — warn only, never auto-delete (user data)
+        # Orphan home subvolumes — warn only
         for d in "${BTRFS_MOUNT}"/home-*; do
             [[ -d "$d" ]] || continue
             local home_name="${d##*/}"
@@ -707,11 +674,9 @@ garbage_collect() {
     echo ":: Garbage collection done"
 }
 
-# ── Orphan home warning ──────────────────────────────────────────────
 # Warns if deleting the given generation(s) would leave home-<tag>
 # subvolumes with no remaining generations referencing their tag.
 # Args: gen_id [gen_id ...]
-
 warn_orphan_homes() {
     local -a del_ids=("$@")
     local -A seen_tags=()

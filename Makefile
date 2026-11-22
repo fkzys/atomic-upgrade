@@ -16,7 +16,7 @@ LICENSEDIR   = $(SHAREDIR)/licenses/$(pkgname)
 
 MANPAGES = man/atomic-upgrade.8 man/atomic-gc.8 man/atomic.conf.5
 
-# Generate groff from markdown (requires pandoc, run locally)
+# Generate groff from markdown; requires pandoc, run locally
 man: $(MANPAGES)
 
 man/%.8: man/%.8.md

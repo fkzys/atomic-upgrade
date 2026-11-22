@@ -1,9 +1,16 @@
-#!/bin/bash
-# /usr/bin/atomic-upgrade
+#!/usr/bin/env bash
 #
 # Atomic system upgrade for Arch Linux on Btrfs.
 # Creates a snapshot of the current root, runs a command in a chroot,
 # builds a signed UKI, and registers it for next boot.
+#
+# Copyright (C) 2026 fkzys <fkzys@proton.me>
+#                    https://github.com/fkzys/atomic-upgrade
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 set -euo pipefail
 
@@ -97,7 +104,6 @@ if [[ $SEPARATE_HOME -eq 0 && -n "$COPY_FILES" ]]; then
     exit 1
 fi
 
-# Validate custom tag
 if [[ -n "$CUSTOM_TAG" ]]; then
     if [[ ! "$CUSTOM_TAG" =~ ^[a-zA-Z0-9_-]+$ ]]; then
         echo "ERROR: Invalid tag '${CUSTOM_TAG}'. Use only letters, numbers, hyphens, underscores." >&2
@@ -109,12 +115,12 @@ if [[ -n "$CUSTOM_TAG" ]]; then
     fi
 fi
 
-# Default chroot command: use CHROOT_COMMAND from config (or default in common.sh).
+# Use CHROOT_COMMAND from config, default is the one in common.sh.
 if [[ ${#CHROOT_CMD[@]} -eq 0 ]]; then
     [[ -z "${CHROOT_COMMAND:-}" ]] && CHROOT_COMMAND="/usr/bin/pacman -Syu"
     CHROOT_CMD=()
     # Capture null-delimited output via temp file to reliably detect failures.
-    # Use _ATOMIC_LIB_DIR if available (set by common.sh), else fall back to LIBDIR.
+    # Use _ATOMIC_LIB_DIR if available from common.sh, else fall back to LIBDIR.
     _tmp_array=$(mktemp)
     _cfg_py="${_ATOMIC_LIB_DIR:-${LIBDIR}}/config.py"
     if CONFIG_FILE="${CONFIG_FILE:-/etc/atomic.conf}" python3 "${_cfg_py}" array CHROOT_COMMAND > "$_tmp_array" 2>/dev/null; then
@@ -131,7 +137,6 @@ if [[ ${#CHROOT_CMD[@]} -eq 0 ]]; then
     fi
 fi
 
-# Verify required variables are set
 [[ -n "${NEW_ROOT:-}" ]] || { echo "ERROR: NEW_ROOT not defined" >&2; exit 1; }
 [[ -n "${BTRFS_MOUNT:-}" ]] || { echo "ERROR: BTRFS_MOUNT not defined" >&2; exit 1; }
 [[ -n "${ESP:-}" ]] || { echo "ERROR: ESP not defined" >&2; exit 1; }
@@ -239,7 +244,6 @@ btrfs subvolume snapshot "${BTRFS_MOUNT}/${CURRENT_SUBVOL}" \
     "${BTRFS_MOUNT}/${NEW_SUBVOL}"
 SNAPSHOT_CREATED=1
 
-# Create isolated home subvolume if requested
 if [[ $SEPARATE_HOME -eq 1 ]]; then
     HOME_SV="home-${CUSTOM_TAG}"
     if [[ ! -d "${BTRFS_MOUNT}/${HOME_SV}" ]]; then

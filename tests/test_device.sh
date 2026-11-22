@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
-# tests/test_device.sh — Subvolume/device detection, btrfs mount, validation
+# Subvolume/device detection, btrfs mount, validation
 # Run: bash tests/test_device.sh
+#
+# Copyright (C) 2026 fkzys <fkzys@proton.me>
+#                    https://github.com/fkzys/atomic-upgrade
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 source "$(dirname "${BASH_SOURCE[0]}")/test_harness.sh"
 

@@ -1,8 +1,15 @@
-#!/bin/bash
-# /usr/bin/atomic-rebuild-uki
+#!/usr/bin/env bash
 #
 # Rebuild a signed UKI for an existing generation subvolume.
 # Use case: accidentally deleted .efi file, orphaned snapshot.
+#
+# Copyright (C) 2026 fkzys <fkzys@proton.me>
+#                    https://github.com/fkzys/atomic-upgrade
+#
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 set -euo pipefail
 
@@ -82,7 +89,6 @@ esac
 
 GEN_ID="${1:?Usage: atomic-rebuild-uki <GEN_ID>}"
 
-# Validate gen_id format
 if ! [[ "$GEN_ID" =~ ^[0-9]{8}-[0-9]{6}(-[a-zA-Z0-9_-]+)?$ ]]; then
     echo "ERROR: Invalid GEN_ID format: $GEN_ID (expected YYYYMMDD-HHMMSS[-tag])" >&2
     exit 1
