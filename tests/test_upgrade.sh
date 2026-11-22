@@ -28,7 +28,7 @@ TEST_SCRIPT="${TESTDIR}/atomic-upgrade-test"
 _build_test_script() {
     sed \
         -e 's/^\(\[\[ \$EUID -eq 0 \]\]\)/# \1/' \
-        -e '/^# Verify required variables are set$/i\
+        -e '/^# TEST ANCHOR: tests\/test_upgrade.sh appends/a\
 if [[ "${ATOMIC_EXIT_AFTER_PARSE:-}" == "1" ]]; then\
     echo "PARSE_OK"\
     echo "DRY_RUN=${DRY_RUN}"\
@@ -217,7 +217,7 @@ _TEST_SCRIPT_WS="${TESTDIR}/atomic-upgrade-word-split"
 sed \
     -e 's|^\(export ATOMIC_UPGRADE=1\)$|\1\nCONFIG_FILE="${CONFIG_FILE:-/etc/atomic.conf}"|' \
     -e 's/^\(\[\[ \$EUID -eq 0 \]\]\)/# \1/' \
-    -e '/^# Verify required variables are set$/i\
+    -e '/^# TEST ANCHOR: tests\/test_upgrade.sh appends/a\
 if [[ "${ATOMIC_EXIT_AFTER_PARSE:-}" == "1" ]]; then\
     echo "PARSE_OK"\
     echo "CHROOT_CMD_COUNT=${#CHROOT_CMD[@]}"\
@@ -251,7 +251,7 @@ _TEST_SCRIPT_CLI="${TESTDIR}/atomic-upgrade-cli-priority"
 sed \
     -e 's|^\(export ATOMIC_UPGRADE=1\)$|\1\nCONFIG_FILE="${CONFIG_FILE:-/etc/atomic.conf}"|' \
     -e 's/^\(\[\[ \$EUID -eq 0 \]\]\)/# \1/' \
-    -e '/^# Verify required variables are set$/i\
+    -e '/^# TEST ANCHOR: tests\/test_upgrade.sh appends/a\
 if [[ "${ATOMIC_EXIT_AFTER_PARSE:-}" == "1" ]]; then\
     echo "PARSE_OK"\
     echo "DRY_RUN=${DRY_RUN}"\

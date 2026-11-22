@@ -137,6 +137,7 @@ if [[ ${#CHROOT_CMD[@]} -eq 0 ]]; then
     fi
 fi
 
+# TEST ANCHOR: tests/test_upgrade.sh appends its early-exit block after this line; do not remove.
 [[ -n "${NEW_ROOT:-}" ]] || { echo "ERROR: NEW_ROOT not defined" >&2; exit 1; }
 [[ -n "${BTRFS_MOUNT:-}" ]] || { echo "ERROR: BTRFS_MOUNT not defined" >&2; exit 1; }
 [[ -n "${ESP:-}" ]] || { echo "ERROR: ESP not defined" >&2; exit 1; }
